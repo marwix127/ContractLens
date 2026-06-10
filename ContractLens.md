@@ -59,7 +59,7 @@ ContractLens es una herramienta web donde el usuario sube un contrato en PDF y o
 ### Backend
 - Node.js + Express
 - `pdf-parse` — extracción de texto
-- `@google/generative-ai` — Gemini API
+- `@google/genai` — Gemini API
 - `@anthropic-ai/sdk` — Claude API
 - `pg` + extensión `pgvector` — Postgres con búsqueda vectorial
 - `multer` — uploads de archivos
