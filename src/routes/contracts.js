@@ -2,6 +2,7 @@ const { Router } = require('express')
 const multer = require('multer')
 const { PDFParse } = require('pdf-parse')
 const pool = require('../db')
+const { ingestContract } = require('../services/ingest')
 
 const router = Router()
 
@@ -39,9 +40,13 @@ router.post('/', upload.single('file'), async (req, res) => {
       [req.file.originalname, result.total, result.text]
     )
 
+    // Chunking + embeddings + guardado en pgvector.
+    const { chunksCreated } = await ingestContract(rows[0].id, result.pages)
+
     res.status(201).json({
       contract: rows[0],
-      textLength: result.text.length
+      textLength: result.text.length,
+      chunksCreated
     })
   } catch (err) {
     console.error('Error procesando PDF:', err)
