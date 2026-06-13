@@ -3,6 +3,7 @@ const multer = require('multer')
 const { PDFParse } = require('pdf-parse')
 const pool = require('../db')
 const { ingestContract } = require('../services/ingest')
+const { analyzeContract } = require('../services/analysis')
 
 const router = Router()
 
@@ -74,6 +75,48 @@ router.get('/:id', async (req, res) => {
     return res.status(404).json({ error: 'Contrato no encontrado' })
   }
   res.json({ contract: rows[0] })
+})
+
+// POST /contracts/:id/analyze — análisis inicial con Gemini Flash (5-15 s)
+router.post('/:id/analyze', async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT raw_text FROM contracts WHERE id = $1',
+    [req.params.id]
+  )
+  if (rows.length === 0) {
+    return res.status(404).json({ error: 'Contrato no encontrado' })
+  }
+
+  try {
+    const analysis = await analyzeContract(rows[0].raw_text)
+
+    // upsert: un análisis por contrato; re-analizar reemplaza el anterior.
+    const { rows: saved } = await pool.query(
+      `INSERT INTO analyses (contract_id, summary, extracted_data, risks)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, created_at`,
+      [req.params.id, analysis.summary, analysis.extracted_data, JSON.stringify(analysis.risks)]
+    )
+
+    res.status(201).json({ analysisId: saved[0].id, ...analysis })
+  } catch (err) {
+    console.error('Error en análisis:', err)
+    res.status(502).json({ error: 'No se pudo generar el análisis con el modelo.' })
+  }
+})
+
+// GET /contracts/:id/analysis — obtener el análisis guardado
+router.get('/:id/analysis', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT summary, extracted_data, risks, created_at
+     FROM analyses WHERE contract_id = $1
+     ORDER BY created_at DESC LIMIT 1`,
+    [req.params.id]
+  )
+  if (rows.length === 0) {
+    return res.status(404).json({ error: 'Este contrato aún no tiene análisis. Lanza POST /contracts/:id/analyze.' })
+  }
+  res.json(rows[0])
 })
 
 module.exports = router
