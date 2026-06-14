@@ -2,6 +2,7 @@
 // Una sola llamada con todo el contrato en contexto → JSON garantizado por
 // schema (resumen, datos clave y riesgos). Ver secciones 4 y 5 del doc.
 const { GoogleGenAI, Type } = require('@google/genai')
+const { withGeminiRetry } = require('./retry')
 
 const MODEL = 'gemini-3.5-flash'
 
@@ -100,33 +101,8 @@ Al detectar riesgos, presta especial atención a:
 
 Responde siempre en español. Si un dato no aparece en el contrato, indícalo explícitamente con "No especificado" en lugar de inventarlo.`
 
-// Gemini Flash devuelve 503/429 con frecuencia bajo carga. Reintentamos con
-// backoff exponencial antes de rendirnos.
-const RETRYABLE = [429, 503]
-const MAX_RETRIES = 3
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-async function generateWithRetry(params) {
-  let lastErr
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await ai.models.generateContent(params)
-    } catch (err) {
-      lastErr = err
-      if (!RETRYABLE.includes(err.status) || attempt === MAX_RETRIES) throw err
-      const delay = 1000 * 2 ** attempt // 1s, 2s, 4s
-      console.warn(`Gemini ${err.status}, reintento ${attempt + 1}/${MAX_RETRIES} en ${delay}ms`)
-      await sleep(delay)
-    }
-  }
-  throw lastErr
-}
-
 async function analyzeContract(rawText) {
-  const response = await generateWithRetry({
+  const response = await withGeminiRetry(() => ai.models.generateContent({
     model: MODEL,
     contents: `Analiza el siguiente contrato y devuelve el análisis estructurado.\n\n--- CONTRATO ---\n${rawText}`,
     config: {
@@ -134,7 +110,7 @@ async function analyzeContract(rawText) {
       responseMimeType: 'application/json',
       responseSchema
     }
-  })
+  }))
 
   const data = JSON.parse(response.text)
 
