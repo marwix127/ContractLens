@@ -3,7 +3,7 @@ const multer = require('multer')
 const { PDFParse } = require('pdf-parse')
 const pool = require('../db')
 const { ingestContract } = require('../services/ingest')
-const { analyzeContract } = require('../services/analysis')
+const { analyzeContract, DISCLAIMER } = require('../services/analysis')
 
 const router = Router()
 
@@ -116,7 +116,7 @@ router.get('/:id/analysis', async (req, res) => {
   if (rows.length === 0) {
     return res.status(404).json({ error: 'Este contrato aún no tiene análisis. Lanza POST /contracts/:id/analyze.' })
   }
-  res.json(rows[0])
+  res.json({ ...rows[0], disclaimer: DISCLAIMER })
 })
 
 module.exports = router
