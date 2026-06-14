@@ -1,6 +1,7 @@
 // Chat RAG sobre un contrato con Gemini.
 // Flujo: pregunta → embedding → retrieval top-K en pgvector → respuesta con
 // citas (página + cláusula) y manejo explícito de "no lo sé".
+// Expone dos variantes: chat() (respuesta completa) y chatStream() (SSE).
 const { GoogleGenAI } = require('@google/genai')
 const pool = require('../db')
 const { embedQuery } = require('./embeddings')
@@ -55,10 +56,11 @@ function buildContext(chunks) {
     .join('\n\n')
 }
 
-async function chat(contractId, question, conversationId) {
+// Prepara todo lo necesario para una respuesta: conversación, historial,
+// contexto recuperado y citas. Compartido por chat() y chatStream().
+async function prepareChat(contractId, question, conversationId) {
   conversationId = await ensureConversation(contractId, conversationId)
 
-  // Historial previo para mantener contexto entre mensajes.
   const { rows: history } = await pool.query(
     'SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at',
     [conversationId]
@@ -67,31 +69,26 @@ async function chat(contractId, question, conversationId) {
   const chunks = await retrieveChunks(contractId, question)
   const context = buildContext(chunks)
 
-  // Reconstruir la conversación para Gemini (assistant → model).
   const contents = history.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }]
   }))
-  // El turno actual lleva adjunto el contexto recuperado.
   contents.push({
     role: 'user',
     parts: [{ text: `CONTEXTO recuperado del contrato:\n\n${context}\n\n---\nPregunta: ${question}` }]
   })
 
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents,
-    config: { systemInstruction: SYSTEM_INSTRUCTION }
-  })
-
-  const answer = response.text
   const citations = chunks.map(c => ({
     page: c.page_number,
     clause: c.clause_reference,
     similarity: Number(c.similarity.toFixed(3))
   }))
 
-  // Persistir el turno (la pregunta original, sin el contexto adjunto).
+  return { conversationId, contents, citations }
+}
+
+// Persiste el turno (la pregunta original, sin el contexto adjunto).
+async function persistTurn(conversationId, question, answer, citations) {
   await pool.query(
     'INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3)',
     [conversationId, 'user', question]
@@ -100,8 +97,49 @@ async function chat(contractId, question, conversationId) {
     'INSERT INTO messages (conversation_id, role, content, citations) VALUES ($1, $2, $3, $4)',
     [conversationId, 'assistant', answer, JSON.stringify(citations)]
   )
-
-  return { conversationId, answer, citations }
 }
 
-module.exports = { chat }
+// Respuesta completa (no streaming).
+async function chat(contractId, question, conversationId) {
+  const { conversationId: cid, contents, citations } = await prepareChat(contractId, question, conversationId)
+
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents,
+    config: { systemInstruction: SYSTEM_INSTRUCTION }
+  })
+
+  const answer = response.text
+  await persistTurn(cid, question, answer, citations)
+  return { conversationId: cid, answer, citations }
+}
+
+// Respuesta en streaming. Generador que emite eventos:
+//   { type: 'meta', conversationId, citations }  — una vez, al principio
+//   { type: 'delta', text }                      — por cada fragmento de texto
+//   { type: 'done' }                             — al terminar (tras persistir)
+async function* chatStream(contractId, question, conversationId) {
+  const { conversationId: cid, contents, citations } = await prepareChat(contractId, question, conversationId)
+
+  yield { type: 'meta', conversationId: cid, citations }
+
+  const stream = await ai.models.generateContentStream({
+    model: MODEL,
+    contents,
+    config: { systemInstruction: SYSTEM_INSTRUCTION }
+  })
+
+  let answer = ''
+  for await (const chunk of stream) {
+    const text = chunk.text
+    if (text) {
+      answer += text
+      yield { type: 'delta', text }
+    }
+  }
+
+  await persistTurn(cid, question, answer, citations)
+  yield { type: 'done' }
+}
+
+module.exports = { chat, chatStream }

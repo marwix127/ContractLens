@@ -4,7 +4,7 @@ const { PDFParse } = require('pdf-parse')
 const pool = require('../db')
 const { ingestContract } = require('../services/ingest')
 const { analyzeContract, DISCLAIMER } = require('../services/analysis')
-const { chat } = require('../services/chat')
+const { chat, chatStream } = require('../services/chat')
 
 const router = Router()
 
@@ -139,6 +139,39 @@ router.post('/:id/chat', async (req, res) => {
   } catch (err) {
     console.error('Error en el chat:', err)
     res.status(502).json({ error: 'No se pudo generar la respuesta.' })
+  }
+})
+
+// POST /contracts/:id/chat/stream — igual que /chat pero con respuesta SSE
+router.post('/:id/chat/stream', async (req, res) => {
+  const { question, conversationId } = req.body || {}
+  if (!question || typeof question !== 'string' || !question.trim()) {
+    return res.status(400).json({ error: 'Falta "question" en el cuerpo de la petición.' })
+  }
+
+  const { rows } = await pool.query('SELECT 1 FROM contracts WHERE id = $1', [req.params.id])
+  if (rows.length === 0) {
+    return res.status(404).json({ error: 'Contrato no encontrado' })
+  }
+
+  // Cabeceras Server-Sent Events.
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  const send = (event) => res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+
+  try {
+    for await (const event of chatStream(req.params.id, question.trim(), conversationId)) {
+      if (event.type === 'meta') event.disclaimer = DISCLAIMER
+      send(event)
+    }
+  } catch (err) {
+    console.error('Error en el chat (stream):', err)
+    send({ type: 'error', error: 'No se pudo generar la respuesta.' })
+  } finally {
+    res.end()
   }
 })
 
