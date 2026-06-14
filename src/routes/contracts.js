@@ -4,6 +4,7 @@ const { PDFParse } = require('pdf-parse')
 const pool = require('../db')
 const { ingestContract } = require('../services/ingest')
 const { analyzeContract, DISCLAIMER } = require('../services/analysis')
+const { chat } = require('../services/chat')
 
 const router = Router()
 
@@ -117,6 +118,28 @@ router.get('/:id/analysis', async (req, res) => {
     return res.status(404).json({ error: 'Este contrato aún no tiene análisis. Lanza POST /contracts/:id/analyze.' })
   }
   res.json({ ...rows[0], disclaimer: DISCLAIMER })
+})
+
+// POST /contracts/:id/chat — pregunta sobre el contrato (RAG con Gemini)
+router.post('/:id/chat', async (req, res) => {
+  const { question, conversationId } = req.body || {}
+  if (!question || typeof question !== 'string' || !question.trim()) {
+    return res.status(400).json({ error: 'Falta "question" en el cuerpo de la petición.' })
+  }
+
+  // Verificar que el contrato existe y tiene chunks indexados.
+  const { rows } = await pool.query('SELECT 1 FROM contracts WHERE id = $1', [req.params.id])
+  if (rows.length === 0) {
+    return res.status(404).json({ error: 'Contrato no encontrado' })
+  }
+
+  try {
+    const result = await chat(req.params.id, question.trim(), conversationId)
+    res.json({ ...result, disclaimer: DISCLAIMER })
+  } catch (err) {
+    console.error('Error en el chat:', err)
+    res.status(502).json({ error: 'No se pudo generar la respuesta.' })
+  }
 })
 
 module.exports = router
