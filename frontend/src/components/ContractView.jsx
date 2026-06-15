@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { getAnalysis, analyzeContract } from '../api'
 import Dashboard from './Dashboard'
 import ChatPanel from './ChatPanel'
 
-export default function ContractView({ contract, onBack }) {
+// El visor arrastra pdf.js (~1 MB); se carga solo al abrir la pestaña Documento.
+const PdfViewer = lazy(() => import('./PdfViewer'))
+
+export default function ContractView({ contract, file, onBack }) {
   const [analysis, setAnalysis] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [tab, setTab] = useState('analisis')
 
   useEffect(() => {
     let cancelled = false
@@ -65,12 +69,37 @@ export default function ContractView({ contract, onBack }) {
 
       {analysis && (
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-          <Dashboard analysis={analysis} />
+          <div>
+            <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1">
+              <TabButton active={tab === 'analisis'} onClick={() => setTab('analisis')}>Análisis</TabButton>
+              <TabButton active={tab === 'documento'} onClick={() => setTab('documento')}>Documento</TabButton>
+            </div>
+            {tab === 'analisis' ? (
+              <Dashboard analysis={analysis} />
+            ) : (
+              <Suspense fallback={<p className="py-10 text-center text-slate-500">Cargando visor…</p>}>
+                {/* File en memoria si lo acabamos de subir; si no (ejemplos), lo sirve el backend. */}
+                <PdfViewer file={file || `/contracts/${contract.id}/file`} />
+              </Suspense>
+            )}
+          </div>
           <div className="lg:sticky lg:top-6 lg:h-[calc(100vh-9rem)]">
             <ChatPanel contractId={contract.id} />
           </div>
         </div>
       )}
     </div>
+  )
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg px-4 py-1.5 text-sm font-medium transition
+        ${active ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+    >
+      {children}
+    </button>
   )
 }

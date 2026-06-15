@@ -7,7 +7,9 @@ CREATE TABLE IF NOT EXISTS contracts (
   filename TEXT NOT NULL,
   uploaded_at TIMESTAMP DEFAULT NOW(),
   total_pages INTEGER,
-  raw_text TEXT
+  raw_text TEXT,
+  pdf_data BYTEA,
+  is_sample BOOLEAN NOT NULL DEFAULT false
 );
 
 -- Chunks con embeddings

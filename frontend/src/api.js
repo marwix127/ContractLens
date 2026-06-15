@@ -17,6 +17,14 @@ export async function listContracts() {
   return data.contracts
 }
 
+// Contratos de muestra precargados para probar sin subir nada.
+export async function listSamples() {
+  const res = await fetch('/contracts/samples')
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Error al listar ejemplos')
+  return data.contracts
+}
+
 // Devuelve el análisis guardado, o null si aún no existe (404).
 export async function getAnalysis(contractId) {
   const res = await fetch(`/contracts/${contractId}/analysis`)

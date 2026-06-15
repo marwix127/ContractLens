@@ -36,10 +36,10 @@ router.post('/', upload.single('file'), async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO contracts (filename, total_pages, raw_text)
-       VALUES ($1, $2, $3)
+      `INSERT INTO contracts (filename, total_pages, raw_text, pdf_data)
+       VALUES ($1, $2, $3, $4)
        RETURNING id, filename, total_pages, uploaded_at`,
-      [req.file.originalname, result.total, result.text]
+      [req.file.originalname, result.total, result.text, req.file.buffer]
     )
 
     // Chunking + embeddings + guardado en pgvector.
@@ -64,6 +64,26 @@ router.get('/', async (req, res) => {
     'SELECT id, filename, total_pages, uploaded_at FROM contracts ORDER BY uploaded_at DESC'
   )
   res.json({ contracts: rows })
+})
+
+// GET /contracts/samples — contratos de muestra precargados para el demo.
+// Debe ir ANTES de /:id, o "samples" se interpretaría como un id.
+router.get('/samples', async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT id, filename, total_pages, uploaded_at FROM contracts WHERE is_sample = true ORDER BY filename'
+  )
+  res.json({ contracts: rows })
+})
+
+// GET /contracts/:id/file — sirve el PDF original.
+router.get('/:id/file', async (req, res) => {
+  const { rows } = await pool.query('SELECT pdf_data, filename FROM contracts WHERE id = $1', [req.params.id])
+  if (rows.length === 0 || !rows[0].pdf_data) {
+    return res.status(404).json({ error: 'PDF no disponible' })
+  }
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `inline; filename="${rows[0].filename}"`)
+  res.send(rows[0].pdf_data)
 })
 
 // GET /contracts/:id — detalle de un contrato

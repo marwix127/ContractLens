@@ -4,6 +4,12 @@ import ContractView from './components/ContractView'
 
 export default function App() {
   const [contract, setContract] = useState(null)
+  const [file, setFile] = useState(null)
+
+  function handleUploaded(contract, file) {
+    setContract(contract)
+    setFile(file)
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
@@ -23,10 +29,10 @@ export default function App() {
                 Resumen ejecutivo, datos clave, detección de riesgos y chat con citas — en minutos.
               </p>
             </div>
-            <UploadScreen onUploaded={setContract} />
+            <UploadScreen onUploaded={handleUploaded} />
           </>
         ) : (
-          <ContractView contract={contract} onBack={() => setContract(null)} />
+          <ContractView contract={contract} file={file} onBack={() => { setContract(null); setFile(null) }} />
         )}
       </main>
 
