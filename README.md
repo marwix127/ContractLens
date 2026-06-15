@@ -8,8 +8,10 @@
 
 ## Demo
 
-- **App desplegada:** _(pendiente de URL)_
+- **App en vivo:** https://contract-lens-mwx.vercel.app
 - **Vídeo (Loom):** _(pendiente)_
+
+> El backend está en el plan gratuito de Railway y "duerme" tras un rato de inactividad: la primera petición puede tardar unos segundos en responder (arranque en frío); después va fluido.
 
 > ⚠️ ContractLens proporciona un análisis automatizado con fines informativos. **No sustituye el asesoramiento de un profesional legal.**
 
@@ -151,6 +153,27 @@ npm run dev         # http://localhost:5173 (proxy al backend)
 
 ---
 
+## Despliegue
+
+Backend en **Railway**, frontend en **Vercel**.
+
+### Backend (Railway)
+- Servicio Node desplegado desde el repositorio; arranca con `npm start`.
+- Postgres + pgvector en el mismo proyecto de Railway.
+- Variables de entorno:
+  - `DATABASE_URL` — referencia interna al servicio Postgres (`${{Postgres.DATABASE_URL}}`)
+  - `GEMINI_API_KEY`
+  - `NODE_ENV=production`
+  - `FRONTEND_URL` — URL del frontend, para CORS (la barra final se ignora en código)
+  - `PORT` lo inyecta Railway automáticamente
+
+### Frontend (Vercel)
+- **Root Directory:** `frontend` (preset Vite, autodetectado).
+- Variable de entorno:
+  - `VITE_API_BASE` — URL pública del backend, **con `https://` y sin barra final**. Se incrusta en tiempo de build, así que al cambiarla hay que **redesplegar**.
+
+---
+
 ## API
 
 | Método | Ruta | Descripción |
@@ -179,6 +202,6 @@ npm run dev         # http://localhost:5173 (proxy al backend)
 
 - [x] Backend completo (upload, chunking, embeddings, análisis, chat con streaming)
 - [x] Frontend (upload, dashboard, chat, visor de PDF, contratos de muestra)
-- [ ] Despliegue (backend en Railway, frontend en Vercel)
+- [x] Despliegue (backend en Railway, frontend en Vercel)
 - [ ] Comparación entre versiones de un contrato
 - [ ] Export del análisis a PDF
