@@ -8,7 +8,19 @@
       "Bash(curl -s -o /dev/null -w \"vite :5173 → %{http_code}\\\\n\" http://localhost:5173/)",
       "Bash(curl -s http://localhost:3000/contracts/samples)",
       "Bash(curl -s -o /dev/null -w \"GET /contracts/no-es-uuid → %{http_code}\\\\n\" http://localhost:3000/contracts/no-es-uuid)",
-      "Bash(curl -s -o /dev/null -w \"GET /contracts/no-es-uuid/analysis → %{http_code}\\\\n\" http://localhost:3000/contracts/no-es-uuid/analysis)"
+      "Bash(curl -s -o /dev/null -w \"GET /contracts/no-es-uuid/analysis → %{http_code}\\\\n\" http://localhost:3000/contracts/no-es-uuid/analysis)",
+      "Bash(curl -s -o /dev/null -w 'GET / → %{http_code}\\\\n' https://contractlens-production-1410.up.railway.app/)",
+      "Bash(curl -s https://contractlens-production-1410.up.railway.app/)",
+      "Bash(curl -sS -v https://contractlens-production-1410.up.railway.app/)",
+      "Bash(nslookup contractlens-production-1410.up.railway.app)",
+      "Bash(host contractlens-production-1410.up.railway.app)",
+      "Bash(curl -s -o /dev/null -w 'GET /contracts/samples → %{http_code}\\\\n' https://contractlens-production-1410.up.railway.app/contracts/samples)",
+      "Bash(curl -s https://contractlens-production-1410.up.railway.app/contracts/samples)",
+      "Bash(curl -s -D - -o /dev/null -H \"Origin: https://contract-lens-mwx.vercel.app\" http://localhost:3001/)",
+      "Bash(curl -s https://contract-lens-mwx.vercel.app/)",
+      "Bash(curl -s -D - -H 'Origin: https://contract-lens-mwx.vercel.app' https://contractlens-production-1410.up.railway.app/contracts/samples)",
+      "Bash(sed -n '1p;/access-control-allow-origin/Ip')",
+      "Read(//tmp/**)"
     ]
   }
 }
