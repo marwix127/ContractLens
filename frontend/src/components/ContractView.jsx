@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { getAnalysis, analyzeContract } from '../api'
 import Dashboard from './Dashboard'
 import ChatPanel from './ChatPanel'
@@ -12,25 +12,22 @@ export default function ContractView({ contract, file, onBack }) {
   const [error, setError] = useState(null)
   const [tab, setTab] = useState('analisis')
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        // Reutiliza el análisis guardado; si no existe, lo genera.
-        let result = await getAnalysis(contract.id)
-        if (!result) result = await analyzeContract(contract.id)
-        if (!cancelled) setAnalysis(result)
-      } catch (err) {
-        if (!cancelled) setError(err.message)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      // Reutiliza el análisis guardado; si no existe, lo genera.
+      let result = await getAnalysis(contract.id)
+      if (!result) result = await analyzeContract(contract.id)
+      setAnalysis(result)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
     }
-    load()
-    return () => { cancelled = true }
   }, [contract.id])
+
+  useEffect(() => { load() }, [load])
 
   return (
     <div>
@@ -59,7 +56,7 @@ export default function ContractView({ contract, file, onBack }) {
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
           <p className="text-red-700">{error}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={load}
             className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
           >
             Reintentar

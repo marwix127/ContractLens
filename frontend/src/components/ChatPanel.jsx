@@ -52,6 +52,8 @@ export default function ChatPanel({ contractId }) {
     ])
 
     let answer = ''
+    // Conserva el texto ya recibido si el stream falla a mitad.
+    const fail = (msg) => updateLast({ content: answer ? `${answer}\n\n⚠️ ${msg}` : `⚠️ ${msg}`, pending: false })
     try {
       await streamChat(contractId, q, conversationId.current, {
         onMeta: (meta) => {
@@ -62,10 +64,10 @@ export default function ChatPanel({ contractId }) {
           answer += text
           updateLast({ content: answer, pending: false })
         },
-        onError: (msg) => updateLast({ content: `⚠️ ${msg}`, pending: false })
+        onError: fail
       })
     } catch (err) {
-      updateLast({ content: `⚠️ ${err.message}`, pending: false })
+      fail(err.message)
     } finally {
       setStreaming(false)
     }

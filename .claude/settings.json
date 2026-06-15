@@ -5,7 +5,10 @@
       "Bash(curl -s http://localhost:5173/)",
       "Bash(curl -s -F \"file=@/f/ContractLens/test/contrato-test.pdf\" http://localhost:5173/contracts)",
       "Bash(curl -s -o /dev/null -w \"backend :3000 → %{http_code}\\\\n\" http://localhost:3000/)",
-      "Bash(curl -s -o /dev/null -w \"vite :5173 → %{http_code}\\\\n\" http://localhost:5173/)"
+      "Bash(curl -s -o /dev/null -w \"vite :5173 → %{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(curl -s http://localhost:3000/contracts/samples)",
+      "Bash(curl -s -o /dev/null -w \"GET /contracts/no-es-uuid → %{http_code}\\\\n\" http://localhost:3000/contracts/no-es-uuid)",
+      "Bash(curl -s -o /dev/null -w \"GET /contracts/no-es-uuid/analysis → %{http_code}\\\\n\" http://localhost:3000/contracts/no-es-uuid/analysis)"
     ]
   }
 }

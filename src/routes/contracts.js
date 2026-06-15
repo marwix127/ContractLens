@@ -8,6 +8,17 @@ const { chat, chatStream } = require('../services/chat')
 
 const router = Router()
 
+// Un :id que no sea un UUID válido haría fallar la consulta a Postgres con un
+// 500; lo interceptamos y devolvemos 404 de forma centralizada para todas las
+// rutas /contracts/:id/*.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+router.param('id', (req, res, next, id) => {
+  if (!UUID_RE.test(id)) {
+    return res.status(404).json({ error: 'Contrato no encontrado' })
+  }
+  next()
+})
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB

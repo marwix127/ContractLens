@@ -13,11 +13,17 @@ export default function UploadScreen({ onUploaded }) {
     listSamples().then(setSamples).catch(() => {})
   }, [])
 
+  const MAX_BYTES = 20 * 1024 * 1024 // 20 MB, igual que el límite del backend
+
   function pickFile(f) {
     setError(null)
     if (!f) return
     if (f.type !== 'application/pdf') {
       setError('Solo se aceptan archivos PDF.')
+      return
+    }
+    if (f.size > MAX_BYTES) {
+      setError('El archivo supera el límite de 20 MB.')
       return
     }
     setFile(f)
