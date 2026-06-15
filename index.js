@@ -9,7 +9,10 @@ const PORT = process.env.PORT || 3000
 
 // En producción, el frontend (Vercel) está en otro origen: permitimos solo el
 // configurado en FRONTEND_URL. En local, sin configurar, se permite cualquiera.
-app.use(cors({ origin: process.env.FRONTEND_URL || true }))
+// Se normaliza quitando la barra final: el Origin del navegador nunca la lleva
+// y CORS compara de forma exacta (una barra de más bloquea todas las llamadas).
+const allowedOrigin = process.env.FRONTEND_URL?.replace(/\/+$/, '')
+app.use(cors({ origin: allowedOrigin || true }))
 app.use(express.json())
 
 app.get('/', (req, res) => {
