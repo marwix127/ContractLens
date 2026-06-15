@@ -1,11 +1,15 @@
 require('dotenv').config()
 
 const express = require('express')
+const cors = require('cors')
 const contractsRouter = require('./src/routes/contracts')
 
 const app = express()
 const PORT = process.env.PORT || 3000
 
+// En producción, el frontend (Vercel) está en otro origen: permitimos solo el
+// configurado en FRONTEND_URL. En local, sin configurar, se permite cualquiera.
+app.use(cors({ origin: process.env.FRONTEND_URL || true }))
 app.use(express.json())
 
 app.get('/', (req, res) => {

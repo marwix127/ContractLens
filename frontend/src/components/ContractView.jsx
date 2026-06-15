@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { getAnalysis, analyzeContract } from '../api'
+import { getAnalysis, analyzeContract, fileUrl } from '../api'
 import Dashboard from './Dashboard'
 import ChatPanel from './ChatPanel'
 
@@ -76,7 +76,7 @@ export default function ContractView({ contract, file, onBack }) {
             ) : (
               <Suspense fallback={<p className="py-10 text-center text-slate-500">Cargando visor…</p>}>
                 {/* File en memoria si lo acabamos de subir; si no (ejemplos), lo sirve el backend. */}
-                <PdfViewer file={file || `/contracts/${contract.id}/file`} />
+                <PdfViewer file={file || fileUrl(contract.id)} />
               </Suspense>
             )}
           </div>
