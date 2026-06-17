@@ -11,9 +11,18 @@ const MODELS = (process.env.GEMINI_MODELS ||
   .split(',').map(s => s.trim()).filter(Boolean)
 
 const RETRYABLE = [429, 503]
-const MAX_RETRIES_PER_MODEL = 2 // solo para 503 (sobrecarga)
+const MAX_RETRIES_PER_MODEL = 2 // para 503 (sobrecarga) y timeouts
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Timeouts de red (modelo saturado que tarda demasiado). No traen status HTTP.
+function isTimeout(err) {
+  const code = err?.code || err?.cause?.code
+  return code === 'UND_ERR_HEADERS_TIMEOUT' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    code === 'ETIMEDOUT' ||
+    /timeout/i.test(err?.message || '')
+}
 
 // Ejecuta `fn(model)` probando cada modelo de la cadena. `fn` recibe el id del
 // modelo y devuelve una promesa (sirve para generateContent y
@@ -29,7 +38,8 @@ async function withGeminiFallback(fn) {
         return await fn(model)
       } catch (err) {
         lastErr = err
-        if (!RETRYABLE.includes(err.status)) throw err // error no transitorio → fallar ya
+        const timeout = isTimeout(err)
+        if (!RETRYABLE.includes(err.status) && !timeout) throw err // no transitorio → fallar ya
 
         // Cuota agotada: reintentar el mismo modelo no ayuda, saltar al siguiente.
         if (err.status === 429) {
@@ -37,13 +47,14 @@ async function withGeminiFallback(fn) {
           break
         }
 
-        // Sobrecarga (503): reintentar el mismo modelo antes de saltar.
+        // Sobrecarga (503) o timeout: reintentar el mismo modelo antes de saltar.
+        const reason = timeout ? 'timeout' : '503'
         if (attempt === MAX_RETRIES_PER_MODEL) {
-          if (!isLastModel) console.warn(`Gemini 503 en ${model} → cambiando a ${MODELS[m + 1]}`)
+          if (!isLastModel) console.warn(`Gemini ${reason} en ${model} → cambiando a ${MODELS[m + 1]}`)
           break
         }
         const delay = 1000 * 2 ** attempt // 1s, 2s
-        console.warn(`Gemini 503 en ${model}, reintento ${attempt + 1}/${MAX_RETRIES_PER_MODEL} en ${delay}ms`)
+        console.warn(`Gemini ${reason} en ${model}, reintento ${attempt + 1}/${MAX_RETRIES_PER_MODEL} en ${delay}ms`)
         await sleep(delay)
       }
     }

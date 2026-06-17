@@ -68,6 +68,35 @@ const SAMPLES = [
       { h: 'Cláusula 6. Obras y conservación', b: 'Cualquier obra requiere autorización escrita del Arrendador. Las mejoras realizadas quedarán en beneficio del inmueble sin derecho a compensación.' },
       { h: 'Cláusula 7. Ley aplicable', b: 'El contrato se rige por la Ley de Arrendamientos Urbanos y demás legislación española aplicable. Firmado el 20 de febrero de 2026.' }
     ]
+  },
+  {
+    filename: 'Distribución Comercial — v1 (original).pdf',
+    title: 'CONTRATO DE DISTRIBUCIÓN COMERCIAL',
+    clauses: [
+      { h: 'Partes', b: 'De una parte, Bodegas del Valle S.L. (el "Fabricante"); de otra, DistribuNorte S.A. (el "Distribuidor").' },
+      { h: 'Cláusula 1. Objeto', b: 'El Fabricante encomienda al Distribuidor la distribución de sus productos en el territorio de España.' },
+      { h: 'Cláusula 2. Duración', b: 'El contrato tiene una duración de dos (2) años desde la firma, sin renovación automática. La continuidad requerirá un nuevo acuerdo por escrito.' },
+      { h: 'Cláusula 3. Exclusividad', b: 'El Distribuidor goza de exclusividad en su territorio. No se establecen restricciones tras la finalización del contrato.' },
+      { h: 'Cláusula 4. Objetivos de venta', b: 'El Distribuidor se compromete a un objetivo orientativo de 10.000 unidades anuales. El incumplimiento no conlleva resolución automática.' },
+      { h: 'Cláusula 5. Precios y pago', b: 'Los pedidos se abonan en un plazo de 30 días desde la factura.' },
+      { h: 'Cláusula 6. Terminación', b: 'Cualquiera de las partes puede resolver el contrato mediante preaviso por escrito de 60 días.' },
+      { h: 'Cláusula 7. Ley aplicable', b: 'El contrato se rige por la legislación española y se somete a los tribunales de Valencia. Firmado el 10 de enero de 2026.' }
+    ]
+  },
+  {
+    filename: 'Distribución Comercial — v2 (revisado).pdf',
+    title: 'CONTRATO DE DISTRIBUCIÓN COMERCIAL',
+    clauses: [
+      { h: 'Partes', b: 'De una parte, Bodegas del Valle S.L. (el "Fabricante"); de otra, DistribuNorte S.A. (el "Distribuidor").' },
+      { h: 'Cláusula 1. Objeto', b: 'El Fabricante encomienda al Distribuidor la distribución de sus productos en el territorio de España.' },
+      { h: 'Cláusula 2. Duración', b: 'El contrato tiene una duración de dos (2) años desde la firma, con renovación automática por períodos anuales sucesivos salvo preaviso por escrito de 120 días.' },
+      { h: 'Cláusula 3. Exclusividad', b: 'El Distribuidor goza de exclusividad en su territorio. Además, se obliga a no distribuir productos de la competencia durante los tres (3) años siguientes a la finalización del contrato.' },
+      { h: 'Cláusula 4. Objetivos de venta', b: 'El Distribuidor se compromete a un objetivo mínimo de 15.000 unidades anuales. El incumplimiento faculta al Fabricante para resolver el contrato de forma inmediata.' },
+      { h: 'Cláusula 5. Precios y pago', b: 'Los pedidos se abonan en un plazo de 90 días desde la factura.' },
+      { h: 'Cláusula 6. Terminación', b: 'El Fabricante puede resolver el contrato con un preaviso de 30 días. El Distribuidor solo podrá resolverlo en caso de incumplimiento grave del Fabricante.' },
+      { h: 'Cláusula 7. Penalización', b: 'La terminación anticipada por parte del Distribuidor conllevará una penalización de 50.000 euros.' },
+      { h: 'Cláusula 8. Ley aplicable', b: 'El contrato se rige por la legislación francesa y se somete a los tribunales de París. Firmado el 12 de junio de 2026.' }
+    ]
   }
 ]
 
@@ -80,7 +109,11 @@ async function seed() {
       const buffer = await buildPdf(sample)
       const parser = new PDFParse({ data: buffer })
       const result = await parser.getText()
+      await parser.destroy()
 
+      // El contrato se crea siempre (solo BD). Embeddings y análisis son
+      // best-effort: si Gemini falla, el contrato sigue siendo usable (el
+      // comparador usa el texto, y el análisis se genera al abrirlo).
       const { rows } = await pool.query(
         `INSERT INTO contracts (filename, total_pages, raw_text, pdf_data, is_sample)
          VALUES ($1, $2, $3, $4, true)
@@ -89,17 +122,27 @@ async function seed() {
       )
       const id = rows[0].id
 
-      const { chunksCreated } = await ingestContract(id, result.pages)
+      let chunks = 0
+      try {
+        chunks = (await ingestContract(id, result.pages)).chunksCreated
+      } catch (e) {
+        console.warn(`  ⚠ embeddings falló en ${sample.filename}: ${e.message}`)
+      }
 
-      const analysis = await analyzeContract(result.text)
-      await pool.query(
-        `INSERT INTO analyses (contract_id, summary, extracted_data, risks)
-         VALUES ($1, $2, $3, $4)`,
-        [id, analysis.summary, analysis.extracted_data, JSON.stringify(analysis.risks)]
-      )
+      let risks = '—'
+      try {
+        const analysis = await analyzeContract(result.text)
+        await pool.query(
+          `INSERT INTO analyses (contract_id, summary, extracted_data, risks)
+           VALUES ($1, $2, $3, $4)`,
+          [id, analysis.summary, analysis.extracted_data, JSON.stringify(analysis.risks)]
+        )
+        risks = analysis.risks.length
+      } catch (e) {
+        console.warn(`  ⚠ análisis falló en ${sample.filename} (se generará al abrirlo): ${e.message}`)
+      }
 
-      await parser.destroy()
-      console.log(`✓ ${sample.filename} — ${result.total} págs, ${chunksCreated} chunks, ${analysis.risks.length} riesgos`)
+      console.log(`✓ ${sample.filename} — ${result.total} págs, ${chunks} chunks, ${risks} riesgos`)
     }
 
     console.log('\nSeed completado.')
