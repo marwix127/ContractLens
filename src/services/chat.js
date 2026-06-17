@@ -5,9 +5,8 @@
 const { GoogleGenAI } = require('@google/genai')
 const pool = require('../db')
 const { embedQuery } = require('./embeddings')
-const { withGeminiRetry } = require('./retry')
+const { withGeminiFallback } = require('./retry')
 
-const MODEL = 'gemini-3.5-flash'
 const TOP_K = 5
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
@@ -104,8 +103,8 @@ async function persistTurn(conversationId, question, answer, citations) {
 async function chat(contractId, question, conversationId) {
   const { conversationId: cid, contents, citations } = await prepareChat(contractId, question, conversationId)
 
-  const response = await withGeminiRetry(() => ai.models.generateContent({
-    model: MODEL,
+  const response = await withGeminiFallback((model) => ai.models.generateContent({
+    model,
     contents,
     config: { systemInstruction: SYSTEM_INSTRUCTION }
   }))
@@ -127,8 +126,8 @@ async function* chatStream(contractId, question, conversationId) {
   // El 503/429 de Gemini se lanza al iniciar el stream (antes de emitir nada),
   // así que reintentar la apertura es seguro: ya hemos enviado 'meta' pero aún
   // ningún 'delta'.
-  const stream = await withGeminiRetry(() => ai.models.generateContentStream({
-    model: MODEL,
+  const stream = await withGeminiFallback((model) => ai.models.generateContentStream({
+    model,
     contents,
     config: { systemInstruction: SYSTEM_INSTRUCTION }
   }))

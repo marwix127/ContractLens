@@ -9,7 +9,6 @@
 ## Demo
 
 - **App en vivo:** https://contract-lens-mwx.vercel.app
-- **Vídeo (Loom):** _(pendiente)_
 
 > El backend está en el plan gratuito de Railway y "duerme" tras un rato de inactividad: la primera petición puede tardar unos segundos en responder (arranque en frío); después va fluido.
 
@@ -51,12 +50,13 @@
 - `react-pdf` — visor de PDF integrado (carga diferida)
 
 **Infraestructura**
-- Postgres + pgvector en Railway
+- Backend y Postgres + pgvector en **Railway**
+- Frontend en **Vercel**
 - Variables de entorno para credenciales (`.env`)
 
 **Modelos (Gemini)**
 - Embeddings: `gemini-embedding-001` (1536 dimensiones)
-- Análisis y chat: `gemini-3.5-flash`
+- Análisis, chat y comparación: `gemini-3.5-flash` con **fallback** automático a `gemini-3-flash-preview` y `gemini-2.5-flash`
 
 ---
 
@@ -76,7 +76,9 @@ Estas son las decisiones que diferencian el proyecto de un tutorial:
 
 - **RAG con citas, manejo de "no lo sé", historial y streaming.** El chat recupera los fragmentos más relevantes, responde citando página y cláusula, dice explícitamente cuándo la respuesta no está en el documento (evita alucinaciones), mantiene el contexto entre mensajes y emite la respuesta por **Server-Sent Events**.
 
-- **Reintentos con backoff** para los errores transitorios (429/503) de la API de Gemini, compartidos entre análisis y chat.
+- **Cadena de modelos con fallback.** Como la cuota de Gemini es _por modelo_, si el modelo principal se agota (429) o se satura (503) se pasa automáticamente al siguiente de la cadena. Para el 503 (transitorio) se reintenta con backoff antes de saltar; para el 429 (cuota) se salta de inmediato. Esto mantiene la app disponible aunque un modelo concreto esté caído o sin cuota. Compartido por análisis, chat y comparación.
+
+- **Comparación de versiones.** Dos contratos → una llamada con structured output que devuelve los cambios (añadido/eliminado/modificado con impacto y valores antes/después) y cómo cambia el perfil de riesgo.
 
 - **Disclaimer legal siempre visible** en la interfaz y en las respuestas del análisis.
 
@@ -187,12 +189,13 @@ Backend en **Railway**, frontend en **Vercel**.
 | `GET`  | `/contracts/:id/analysis` | Devuelve el análisis guardado |
 | `POST` | `/contracts/:id/chat` | Pregunta sobre el contrato (respuesta completa) |
 | `POST` | `/contracts/:id/chat/stream` | Igual, con respuesta en streaming (SSE) |
+| `POST` | `/contracts/compare` | Compara dos versiones (`fromId`, `toId`) |
 
 ---
 
 ## Limitaciones conocidas
 
-- El modelo `gemini-3.5-flash` tiene un límite de cuota diario en el _free tier_; un uso intensivo del análisis y el chat puede agotarlo. El análisis se guarda en base de datos, así que volver a verlo no consume cuota; solo el chat hace llamadas por mensaje.
+- El modelo `gemini-3.5-flash` tiene un límite de cuota diario en el _free tier_; al agotarse, la cadena de fallback pasa automáticamente a otros modelos (cada uno con su propia cuota). El análisis se guarda en base de datos, así que volver a verlo no consume cuota; solo el chat y la comparación hacen llamadas por uso.
 - El chunking por expresiones regulares está optimizado para contratos en español bien estructurados (Cláusula/Artículo/Estipulación).
 - Los PDFs escaneados sin OCR no tienen texto extraíble y se rechazan con un aviso.
 
@@ -203,5 +206,5 @@ Backend en **Railway**, frontend en **Vercel**.
 - [x] Backend completo (upload, chunking, embeddings, análisis, chat con streaming)
 - [x] Frontend (upload, dashboard, chat, visor de PDF, contratos de muestra)
 - [x] Despliegue (backend en Railway, frontend en Vercel)
-- [ ] Comparación entre versiones de un contrato
+- [x] Comparación entre versiones de un contrato
 - [ ] Export del análisis a PDF

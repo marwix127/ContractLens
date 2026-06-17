@@ -5,6 +5,7 @@ const pool = require('../db')
 const { ingestContract } = require('../services/ingest')
 const { analyzeContract, DISCLAIMER } = require('../services/analysis')
 const { chat, chatStream } = require('../services/chat')
+const { compareContracts } = require('../services/compare')
 
 const router = Router()
 
@@ -203,6 +204,44 @@ router.post('/:id/chat/stream', async (req, res) => {
     send({ type: 'error', error: 'No se pudo generar la respuesta.' })
   } finally {
     res.end()
+  }
+})
+
+// POST /contracts/compare — compara dos versiones de un contrato.
+// Body: { fromId, toId } (versión anterior y nueva).
+router.post('/compare', async (req, res) => {
+  const { fromId, toId } = req.body || {}
+  if (!fromId || !toId) {
+    return res.status(400).json({ error: 'Faltan "fromId" y "toId".' })
+  }
+  if (fromId === toId) {
+    return res.status(400).json({ error: 'Selecciona dos contratos distintos.' })
+  }
+  if (!UUID_RE.test(fromId) || !UUID_RE.test(toId)) {
+    return res.status(404).json({ error: 'Contrato no encontrado' })
+  }
+
+  const { rows } = await pool.query(
+    'SELECT id, filename, raw_text FROM contracts WHERE id = ANY($1::uuid[])',
+    [[fromId, toId]]
+  )
+  const before = rows.find(r => r.id === fromId)
+  const after = rows.find(r => r.id === toId)
+  if (!before || !after) {
+    return res.status(404).json({ error: 'Contrato no encontrado' })
+  }
+
+  try {
+    const comparison = await compareContracts(before.raw_text, after.raw_text)
+    res.json({
+      from: { id: before.id, filename: before.filename },
+      to: { id: after.id, filename: after.filename },
+      ...comparison,
+      disclaimer: DISCLAIMER
+    })
+  } catch (err) {
+    console.error('Error en la comparación:', err)
+    res.status(502).json({ error: 'No se pudo generar la comparación.' })
   }
 })
 

@@ -20,7 +20,8 @@
       "Bash(curl -s https://contract-lens-mwx.vercel.app/)",
       "Bash(curl -s -D - -H 'Origin: https://contract-lens-mwx.vercel.app' https://contractlens-production-1410.up.railway.app/contracts/samples)",
       "Bash(sed -n '1p;/access-control-allow-origin/Ip')",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"backend local :3000 → %{http_code}\\\\n\" http://localhost:3000/)"
     ]
   }
 }

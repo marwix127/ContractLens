@@ -48,6 +48,18 @@ export async function analyzeContract(contractId) {
   return data
 }
 
+// Compara dos versiones de un contrato (anterior vs nueva).
+export async function compareContracts(fromId, toId) {
+  const res = await fetch(`${API_BASE}/contracts/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fromId, toId })
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Error al comparar los contratos')
+  return data
+}
+
 // Chat con respuesta en streaming (SSE). Invoca los handlers a medida que
 // llegan los eventos: onMeta(meta), onDelta(text), onDone(), onError(msg).
 export async function streamChat(contractId, question, conversationId, handlers = {}) {
