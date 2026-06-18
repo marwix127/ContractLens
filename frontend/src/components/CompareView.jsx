@@ -81,6 +81,11 @@ export default function CompareView({ onBack }) {
         >
           {loading ? 'Comparando…' : 'Comparar'}
         </button>
+        {loading && (
+          <p className="mt-3 text-center text-sm text-slate-500">
+            La IA está leyendo ambos contratos y detectando los cambios. Puede tardar entre 10 segundos y un minuto.
+          </p>
+        )}
       </Card>
 
       {error && (
