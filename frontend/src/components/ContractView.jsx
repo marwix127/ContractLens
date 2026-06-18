@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { getAnalysis, analyzeContract, fileUrl } from '../api'
+import { getAnalysis, analyzeContract, fileUrl, analysisPdfUrl } from '../api'
 import Dashboard from './Dashboard'
 import ChatPanel from './ChatPanel'
 
@@ -36,12 +36,22 @@ export default function ContractView({ contract, file, onBack }) {
           <h1 className="text-2xl font-bold tracking-tight">{contract.filename}</h1>
           <p className="text-sm text-slate-400">{contract.total_pages} páginas</p>
         </div>
-        <button
-          onClick={onBack}
-          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          ← Subir otro
-        </button>
+        <div className="flex gap-2">
+          {analysis && (
+            <a
+              href={analysisPdfUrl(contract.id)}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            >
+              Exportar PDF
+            </a>
+          )}
+          <button
+            onClick={onBack}
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            ← Subir otro
+          </button>
+        </div>
       </div>
 
       {loading && (

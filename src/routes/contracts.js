@@ -6,6 +6,7 @@ const { ingestContract } = require('../services/ingest')
 const { analyzeContract, DISCLAIMER } = require('../services/analysis')
 const { chat, chatStream } = require('../services/chat')
 const { compareContracts } = require('../services/compare')
+const { buildAnalysisPdf } = require('../services/report')
 
 const router = Router()
 
@@ -150,6 +151,31 @@ router.get('/:id/analysis', async (req, res) => {
     return res.status(404).json({ error: 'Este contrato aún no tiene análisis. Lanza POST /contracts/:id/analyze.' })
   }
   res.json({ ...rows[0], disclaimer: DISCLAIMER })
+})
+
+// GET /contracts/:id/analysis/pdf — descarga el análisis como informe PDF
+router.get('/:id/analysis/pdf', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT a.summary, a.extracted_data, a.risks, c.filename
+     FROM analyses a JOIN contracts c ON c.id = a.contract_id
+     WHERE a.contract_id = $1
+     ORDER BY a.created_at DESC LIMIT 1`,
+    [req.params.id]
+  )
+  if (rows.length === 0) {
+    return res.status(404).json({ error: 'Este contrato aún no tiene análisis.' })
+  }
+
+  try {
+    const pdf = await buildAnalysisPdf({ filename: rows[0].filename, analysis: rows[0] })
+    const safeName = rows[0].filename.replace(/\.pdf$/i, '').replace(/[^\w.-]+/g, '_')
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="analisis-${safeName}.pdf"`)
+    res.send(pdf)
+  } catch (err) {
+    console.error('Error generando el informe PDF:', err)
+    res.status(500).json({ error: 'No se pudo generar el informe PDF.' })
+  }
 })
 
 // POST /contracts/:id/chat — pregunta sobre el contrato (RAG con Gemini)

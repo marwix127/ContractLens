@@ -187,6 +187,7 @@ Backend en **Railway**, frontend en **Vercel**.
 | `GET`  | `/contracts/:id/file` | Sirve el PDF original |
 | `POST` | `/contracts/:id/analyze` | Genera y guarda el análisis (Gemini) |
 | `GET`  | `/contracts/:id/analysis` | Devuelve el análisis guardado |
+| `GET`  | `/contracts/:id/analysis/pdf` | Descarga el análisis como informe PDF |
 | `POST` | `/contracts/:id/chat` | Pregunta sobre el contrato (respuesta completa) |
 | `POST` | `/contracts/:id/chat/stream` | Igual, con respuesta en streaming (SSE) |
 | `POST` | `/contracts/compare` | Compara dos versiones (`fromId`, `toId`) |
@@ -207,4 +208,4 @@ Backend en **Railway**, frontend en **Vercel**.
 - [x] Frontend (upload, dashboard, chat, visor de PDF, contratos de muestra)
 - [x] Despliegue (backend en Railway, frontend en Vercel)
 - [x] Comparación entre versiones de un contrato
-- [ ] Export del análisis a PDF
+- [x] Export del análisis a PDF

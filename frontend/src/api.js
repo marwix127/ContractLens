@@ -7,6 +7,9 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 // URL del PDF original (para el visor).
 export const fileUrl = (contractId) => `${API_BASE}/contracts/${contractId}/file`
 
+// URL del informe de análisis en PDF (descarga).
+export const analysisPdfUrl = (contractId) => `${API_BASE}/contracts/${contractId}/analysis/pdf`
+
 export async function uploadContract(file) {
   const form = new FormData()
   form.append('file', file)
