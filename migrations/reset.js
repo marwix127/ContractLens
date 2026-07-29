@@ -1,7 +1,7 @@
 // Vacía los datos de todas las tablas (mantiene el schema).
 // Borrar contracts arrastra chunks, analyses, conversations y messages
 // gracias a ON DELETE CASCADE.
-require('dotenv').config()
+require('../src/config/env')
 const pool = require('../src/db')
 
 async function reset() {

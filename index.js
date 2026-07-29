@@ -1,8 +1,9 @@
-require('dotenv').config()
+require('./src/config/env')
 
 const express = require('express')
 const cors = require('cors')
 const contractsRouter = require('./src/routes/contracts')
+const pool = require('./src/db')
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -17,6 +18,18 @@ app.use(express.json())
 
 app.get('/', (req, res) => {
   res.json({ message: 'ContractLens API', status: 'ok' })
+})
+
+// Readiness real: además de comprobar Express, verifica que PostgreSQL acepta
+// conexiones. Resulta útil para Docker, CI y los smoke tests de Playwright.
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1')
+    res.json({ status: 'ok', database: 'ok' })
+  } catch (err) {
+    console.error('Health check de base de datos falló:', err.message)
+    res.status(503).json({ status: 'error', database: 'unavailable' })
+  }
 })
 
 app.use('/contracts', contractsRouter)

@@ -7,6 +7,13 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "local:db:up": "docker compose up -d --wait postgres",
+    "local:db:down": "docker compose down",
+    "local:db:logs": "docker compose logs -f postgres",
+    "local:migrate": "node migrations/migrate.js",
+    "local:seed": "node seed/seed-local.js",
+    "local:start": "node index.js",
+    "local:dev": "nodemon index.js",
     "migrate": "node migrations/migrate.js",
     "db:reset": "node migrations/reset.js",
     "seed": "node seed/seed-samples.js"

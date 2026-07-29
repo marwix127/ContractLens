@@ -1,7 +1,7 @@
 // Siembra contratos de muestra para el demo: genera PDFs ficticios con pdfkit,
 // los pasa por el mismo pipeline real (extracción → chunking → embeddings →
 // análisis) y los marca como is_sample. Reejecutable: borra las muestras previas.
-require('dotenv').config()
+require('../src/config/env')
 const PDFDocument = require('pdfkit')
 const { PDFParse } = require('pdf-parse')
 const pool = require('../src/db')

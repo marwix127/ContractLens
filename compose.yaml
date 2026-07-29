@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: contractlens
+      POSTGRES_USER: contractlens
+      POSTGRES_PASSWORD: contractlens
+    ports:
+      # Se usa 5433 para no chocar con un PostgreSQL instalado en el host.
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contractlens -d contractlens"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - contractlens_pgdata:/var/lib/postgresql/data
+
+volumes:
+  contractlens_pgdata:

@@ -153,6 +153,63 @@ npm run dev         # http://localhost:5173 (proxy al backend)
 - `npm run db:reset` — vacía todos los datos (mantiene el esquema)
 - `npm run seed` — regenera los contratos de muestra
 
+### Backend local para QA
+
+La configuración local está separada de Railway. Si existe `.env.local`, el
+backend la carga antes que `.env`, evitando utilizar por accidente la base de
+datos remota.
+
+Requisitos:
+
+- Node.js 18+
+- Docker Desktop con Docker Compose
+
+Arranque inicial:
+
+```bash
+# .env.local ya puede crearse copiando el ejemplo:
+cp .env.local.example .env.local
+
+# PostgreSQL 16 con pgvector (publicado en localhost:5433)
+npm run local:db:up
+
+# Crear el esquema y dos contratos deterministas para QA
+npm run local:migrate
+npm run local:seed
+
+# API en http://localhost:3000
+npm run local:dev
+```
+
+En PowerShell, el primer comando equivalente es:
+
+```powershell
+Copy-Item .env.local.example .env.local
+```
+
+Comprobaciones:
+
+```text
+GET http://localhost:3000/          -> proceso Express disponible
+GET http://localhost:3000/health    -> Express y PostgreSQL disponibles
+GET http://localhost:3000/contracts/samples
+```
+
+El seed local no consume cuota de Gemini y deja preparados el listado, el
+dashboard, el visor y la exportación PDF. Para subir nuevos contratos, usar el
+chat o comparar versiones con IA, hay que completar `GEMINI_API_KEY` en
+`.env.local`.
+
+Para detener la base de datos:
+
+```bash
+npm run local:db:down
+```
+
+Los datos permanecen en el volumen `contractlens_pgdata`. `docker compose down
+-v` elimina también ese volumen y debe usarse solo si se quiere reiniciar la
+base local desde cero.
+
 ---
 
 ## Despliegue

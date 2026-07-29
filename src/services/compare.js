@@ -2,10 +2,9 @@
 // Una sola llamada con ambos textos en contexto → JSON con el resumen de
 // cambios, la lista detallada (añadido/eliminado/modificado) y el cambio en el
 // perfil de riesgo.
-const { GoogleGenAI, Type } = require('@google/genai')
+const { Type } = require('@google/genai')
+const { getGeminiClient } = require('./gemini')
 const { withGeminiFallback } = require('./retry')
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
 const responseSchema = {
   type: Type.OBJECT,
@@ -50,6 +49,7 @@ Para cada cambio indica:
 Céntrate en cambios sustantivos (económicos, de obligaciones, de riesgo), no en diferencias triviales de redacción. Valora cómo cambia el perfil de riesgo y a quién favorecen los cambios. Responde en español y no inventes cambios que no estén en los textos.`
 
 async function compareContracts(textBefore, textAfter) {
+  const ai = getGeminiClient()
   const response = await withGeminiFallback((model) => ai.models.generateContent({
     model,
     contents: `Compara estas dos versiones de un contrato e identifica los cambios.\n\n=== VERSIÓN ANTERIOR ===\n${textBefore}\n\n=== VERSIÓN NUEVA ===\n${textAfter}`,

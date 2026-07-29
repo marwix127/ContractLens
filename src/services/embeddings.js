@@ -1,9 +1,7 @@
-const { GoogleGenAI } = require('@google/genai')
+const { getGeminiClient } = require('./gemini')
 
 const MODEL = 'gemini-embedding-001'
 const DIMENSIONS = 1536 // debe coincidir con vector(1536) en el schema
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
 // Gemini no normaliza los vectores cuando outputDimensionality < 3072.
 // Sin normalizar, la distancia coseno de pgvector da resultados sesgados.
@@ -13,6 +11,7 @@ function normalize(vector) {
 }
 
 async function embed(texts, taskType) {
+  const ai = getGeminiClient()
   const res = await ai.models.embedContent({
     model: MODEL,
     contents: texts,

@@ -1,13 +1,12 @@
 // Análisis inicial del contrato con Gemini Flash y structured output.
 // Una sola llamada con todo el contrato en contexto → JSON garantizado por
 // schema (resumen, datos clave y riesgos). Ver secciones 4 y 5 del doc.
-const { GoogleGenAI, Type } = require('@google/genai')
+const { Type } = require('@google/genai')
+const { getGeminiClient } = require('./gemini')
 const { withGeminiFallback } = require('./retry')
 
 const DISCLAIMER =
   'Este análisis no constituye asesoramiento legal y debe ser revisado por un profesional.'
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
 const responseSchema = {
   type: Type.OBJECT,
@@ -100,6 +99,7 @@ Al detectar riesgos, presta especial atención a:
 Responde siempre en español. Si un dato no aparece en el contrato, indícalo explícitamente con "No especificado" en lugar de inventarlo.`
 
 async function analyzeContract(rawText) {
+  const ai = getGeminiClient()
   const response = await withGeminiFallback((model) => ai.models.generateContent({
     model,
     contents: `Analiza el siguiente contrato y devuelve el análisis estructurado.\n\n--- CONTRATO ---\n${rawText}`,

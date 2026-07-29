@@ -2,14 +2,12 @@
 // Flujo: pregunta → embedding → retrieval top-K en pgvector → respuesta con
 // citas (página + cláusula) y manejo explícito de "no lo sé".
 // Expone dos variantes: chat() (respuesta completa) y chatStream() (SSE).
-const { GoogleGenAI } = require('@google/genai')
 const pool = require('../db')
 const { embedQuery } = require('./embeddings')
+const { getGeminiClient } = require('./gemini')
 const { withGeminiFallback } = require('./retry')
 
 const TOP_K = 5
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
 const SYSTEM_INSTRUCTION = `Eres un asistente que responde preguntas sobre un contrato concreto. Reglas estrictas:
 
@@ -102,6 +100,7 @@ async function persistTurn(conversationId, question, answer, citations) {
 // Respuesta completa (no streaming).
 async function chat(contractId, question, conversationId) {
   const { conversationId: cid, contents, citations } = await prepareChat(contractId, question, conversationId)
+  const ai = getGeminiClient()
 
   const response = await withGeminiFallback((model) => ai.models.generateContent({
     model,
@@ -120,6 +119,7 @@ async function chat(contractId, question, conversationId) {
 //   { type: 'done' }                             — al terminar (tras persistir)
 async function* chatStream(contractId, question, conversationId) {
   const { conversationId: cid, contents, citations } = await prepareChat(contractId, question, conversationId)
+  const ai = getGeminiClient()
 
   yield { type: 'meta', conversationId: cid, citations }
 
