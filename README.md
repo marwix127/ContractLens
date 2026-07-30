@@ -8,9 +8,12 @@
 
 ## Demo
 
-- **App en vivo:** https://contract-lens-mwx.vercel.app
+- **Frontend publicado:** https://contract-lens-mwx.vercel.app
 
-> El backend está en el plan gratuito de Railway y "duerme" tras un rato de inactividad: la primera petición puede tardar unos segundos en responder (arranque en frío); después va fluido.
+> El frontend continúa publicado en Vercel, pero el backend público de Railway
+> está actualmente inactivo porque finalizó el período gratuito. Para probar el
+> flujo completo, utiliza el entorno local con Docker descrito en
+> [Puesta en marcha](#puesta-en-marcha).
 
 > ⚠️ ContractLens proporciona un análisis automatizado con fines informativos. **No sustituye el asesoramiento de un profesional legal.**
 
@@ -50,9 +53,10 @@
 - `react-pdf` — visor de PDF integrado (carga diferida)
 
 **Infraestructura**
-- Backend y Postgres + pgvector en **Railway**
-- Frontend en **Vercel**
-- Variables de entorno para credenciales (`.env`)
+- Backend y Postgres + pgvector reproducibles en local mediante **Docker Compose**
+- Frontend publicado en **Vercel**
+- Despliegue anterior del backend en **Railway** (actualmente inactivo)
+- Variables de entorno separadas para local (`.env.local`) y despliegue
 
 **Modelos (Gemini)**
 - Embeddings: `gemini-embedding-001` (1536 dimensiones)
@@ -88,11 +92,13 @@ Estas son las decisiones que diferencian el proyecto de un tutorial:
 
 ```
 ContractLens/
+├── compose.yaml              # PostgreSQL + pgvector para desarrollo local
 ├── index.js                  # servidor Express
 ├── src/
 │   ├── db.js                 # pool de conexión a Postgres
 │   ├── routes/contracts.js   # endpoints
 │   └── services/
+│       ├── gemini.js         # cliente Gemini con inicialización diferida
 │       ├── embeddings.js     # Gemini embeddings (normalizados)
 │       ├── chunking.js       # chunking por cláusulas
 │       ├── ingest.js         # pipeline chunks → embeddings → pgvector
@@ -100,7 +106,9 @@ ContractLens/
 │       ├── chat.js           # RAG: retrieval + respuesta (normal y streaming)
 │       └── retry.js          # reintentos con backoff para Gemini
 ├── migrations/               # schema y migraciones
-├── seed/seed-samples.js      # contratos de muestra para el demo
+├── seed/
+│   ├── seed-samples.js       # muestras completas generadas con Gemini
+│   └── seed-local.js         # datos QA deterministas sin consumir Gemini
 └── frontend/                 # React + Vite + Tailwind
     └── src/
         ├── api.js
@@ -112,62 +120,16 @@ ContractLens/
 ## Puesta en marcha
 
 ### Requisitos
+
 - Node.js 18+
-- Una base de datos Postgres con la extensión **pgvector** (p. ej. en Railway)
+- Docker Desktop con Docker Compose (opción local recomendada)
 - Una API key de Gemini ([Google AI Studio](https://aistudio.google.com/apikey))
+  solo para subida, embeddings, análisis, chat y comparación reales
 
-### 1. Backend
+### Opción recomendada: backend local con Docker
 
 ```bash
 npm install
-```
-
-Crea un archivo `.env` en la raíz:
-
-```env
-DATABASE_URL=postgresql://usuario:password@host:puerto/basededatos
-GEMINI_API_KEY=tu_api_key
-PORT=3000
-NODE_ENV=development
-FRONTEND_URL=http://localhost:5173
-```
-
-Aplica el esquema de base de datos y (opcional) siembra contratos de muestra:
-
-```bash
-npm run migrate     # crea tablas + extensión pgvector
-npm run seed        # contratos de ejemplo precargados (usa la API de Gemini)
-npm run dev         # arranca el backend en http://localhost:3000
-```
-
-### 2. Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev         # http://localhost:5173 (proxy al backend)
-```
-
-### Scripts útiles
-- `npm run migrate [archivo.sql]` — aplica una migración (por defecto `schema.sql`)
-- `npm run db:reset` — vacía todos los datos (mantiene el esquema)
-- `npm run seed` — regenera los contratos de muestra
-
-### Backend local para QA
-
-La configuración local está separada de Railway. Si existe `.env.local`, el
-backend la carga antes que `.env`, evitando utilizar por accidente la base de
-datos remota.
-
-Requisitos:
-
-- Node.js 18+
-- Docker Desktop con Docker Compose
-
-Arranque inicial:
-
-```bash
-# .env.local ya puede crearse copiando el ejemplo:
 cp .env.local.example .env.local
 
 # PostgreSQL 16 con pgvector (publicado en localhost:5433)
@@ -181,11 +143,22 @@ npm run local:seed
 npm run local:dev
 ```
 
-En PowerShell, el primer comando equivalente es:
+En PowerShell utiliza `Copy-Item` para crear la configuración:
 
 ```powershell
 Copy-Item .env.local.example .env.local
 ```
+
+En otra terminal, inicia el frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+La aplicación queda disponible en `http://localhost:5173`; Vite reenvía las
+peticiones de `/contracts` al backend de `http://localhost:3000`.
 
 Comprobaciones:
 
@@ -198,7 +171,31 @@ GET http://localhost:3000/contracts/samples
 El seed local no consume cuota de Gemini y deja preparados el listado, el
 dashboard, el visor y la exportación PDF. Para subir nuevos contratos, usar el
 chat o comparar versiones con IA, hay que completar `GEMINI_API_KEY` en
-`.env.local`.
+`.env.local`. Los contratos del seed local no contienen embeddings; para probar
+el chat RAG completo hay que subir un PDF con una clave configurada.
+
+### Configuración manual o remota
+
+También se puede usar cualquier PostgreSQL que tenga la extensión `pgvector`.
+Crea un `.env` con `DATABASE_URL`, `DATABASE_SSL`, `GEMINI_API_KEY`, `PORT` y
+`FRONTEND_URL`, y ejecuta:
+
+```bash
+npm run migrate
+npm run seed
+npm run dev
+```
+
+`npm run seed` genera las muestras completas y sí realiza llamadas a Gemini.
+
+### Scripts útiles
+
+- `npm run local:db:up` — levanta PostgreSQL + pgvector local
+- `npm run local:migrate` — aplica el esquema a la base local
+- `npm run local:seed` — crea datos QA deterministas sin Gemini
+- `npm run local:dev` — inicia el backend local con recarga automática
+- `npm run db:reset` — vacía todos los datos de la base configurada
+- `npm run seed` — regenera las muestras completas usando Gemini
 
 Para detener la base de datos:
 
@@ -206,18 +203,22 @@ Para detener la base de datos:
 npm run local:db:down
 ```
 
-Los datos permanecen en el volumen `contractlens_pgdata`. `docker compose down
--v` elimina también ese volumen y debe usarse solo si se quiere reiniciar la
-base local desde cero.
+Los datos permanecen en el volumen `contractlens_pgdata`. El comando
+`docker compose down -v` elimina también ese volumen y debe usarse solo si se
+quiere reiniciar la base local desde cero.
 
 ---
 
 ## Despliegue
 
-Backend en **Railway**, frontend en **Vercel**.
+El frontend continúa publicado en **Vercel**. El backend y PostgreSQL estuvieron
+desplegados en **Railway**, pero ese entorno está actualmente inactivo tras
+finalizar el período gratuito. La configuración se conserva como referencia
+para un futuro redespliegue.
 
-### Backend (Railway)
-- Servicio Node desplegado desde el repositorio; arranca con `npm start`.
+### Backend (configuración anterior de Railway)
+
+- Servicio Node desplegable desde el repositorio con `npm start`.
 - Postgres + pgvector en el mismo proyecto de Railway.
 - Variables de entorno:
   - `DATABASE_URL` — referencia interna al servicio Postgres (`${{Postgres.DATABASE_URL}}`)
@@ -227,6 +228,7 @@ Backend en **Railway**, frontend en **Vercel**.
   - `PORT` lo inyecta Railway automáticamente
 
 ### Frontend (Vercel)
+
 - **Root Directory:** `frontend` (preset Vite, autodetectado).
 - Variable de entorno:
   - `VITE_API_BASE` — URL pública del backend, **con `https://` y sin barra final**. Se incrusta en tiempo de build, así que al cambiarla hay que **redesplegar**.
@@ -237,6 +239,7 @@ Backend en **Railway**, frontend en **Vercel**.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
+| `GET`  | `/health` | Comprueba que la API y PostgreSQL están disponibles |
 | `POST` | `/contracts` | Sube un PDF (campo `file`): extrae texto, chunking e indexado |
 | `GET`  | `/contracts` | Lista los contratos |
 | `GET`  | `/contracts/samples` | Lista los contratos de muestra |
@@ -253,16 +256,10 @@ Backend en **Railway**, frontend en **Vercel**.
 
 ## Limitaciones conocidas
 
+- El backend público está inactivo; la demo completa debe ejecutarse localmente.
 - El modelo `gemini-3.5-flash` tiene un límite de cuota diario en el _free tier_; al agotarse, la cadena de fallback pasa automáticamente a otros modelos (cada uno con su propia cuota). El análisis se guarda en base de datos, así que volver a verlo no consume cuota; solo el chat y la comparación hacen llamadas por uso.
 - El chunking por expresiones regulares está optimizado para contratos en español bien estructurados (Cláusula/Artículo/Estipulación).
 - Los PDFs escaneados sin OCR no tienen texto extraíble y se rechazan con un aviso.
 
 ---
 
-## Estado y próximos pasos
-
-- [x] Backend completo (upload, chunking, embeddings, análisis, chat con streaming)
-- [x] Frontend (upload, dashboard, chat, visor de PDF, contratos de muestra)
-- [x] Despliegue (backend en Railway, frontend en Vercel)
-- [x] Comparación entre versiones de un contrato
-- [x] Export del análisis a PDF
