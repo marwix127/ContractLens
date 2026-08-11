@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: contractlens-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://contract-lens-mwx.vercel.app

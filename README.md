@@ -10,9 +10,9 @@
 
 - **Frontend publicado:** https://contract-lens-mwx.vercel.app
 
-> La migración del backend a Koyeb y de PostgreSQL a Neon está preparada en el
-> repositorio, pero falta crear y enlazar ambos servicios. Hasta completar ese
-> paso, utiliza el entorno local descrito en
+> PostgreSQL + pgvector ya está migrado a Neon y el despliegue del backend en
+> Render está definido como infraestructura reproducible en `render.yaml`.
+> Hasta publicar y enlazar el servicio, utiliza el entorno local descrito en
 > [Puesta en marcha](#puesta-en-marcha) para probar el flujo completo.
 
 > ⚠️ ContractLens proporciona un análisis automatizado con fines informativos. **No sustituye el asesoramiento de un profesional legal.**
@@ -54,7 +54,7 @@
 
 **Infraestructura**
 - PostgreSQL + pgvector reproducible en local mediante **Docker Compose**
-- Backend desplegable en **Koyeb** con el buildpack nativo de Node.js
+- Backend desplegable en **Render** con el runtime nativo de Node.js
 - PostgreSQL administrado en **Neon** con conexión agrupada y TLS
 - Frontend publicado en **Vercel**
 - Variables de entorno separadas para local (`.env.local`) y despliegue
@@ -122,7 +122,7 @@ ContractLens/
 
 ### Requisitos
 
-- Node.js 22.12+
+- Node.js 22 LTS (22.12+)
 - Docker Desktop con Docker Compose (opción local recomendada)
 - Una API key de Gemini ([Google AI Studio](https://aistudio.google.com/apikey))
   solo para subida, embeddings, análisis, chat y comparación reales
@@ -215,7 +215,7 @@ quiere reiniciar la base local desde cero.
 ## Despliegue
 
 El despliegue objetivo mantiene el frontend en **Vercel**, ejecuta la API
-Express en **Koyeb** y utiliza **Neon** para PostgreSQL + pgvector.
+Express en **Render** y utiliza **Neon** para PostgreSQL + pgvector.
 
 ### 1. Base de datos en Neon
 
@@ -243,30 +243,31 @@ La migración activa `vector` y crea el esquema completo. Para la API desplegada
 utiliza la URL **pooled** de Neon y conserva sus parámetros de seguridad, como
 `sslmode=require`.
 
-### 2. Backend en Koyeb
+### 2. Backend en Render
 
-1. Crea un **Web Service** conectado al repositorio de GitHub.
-2. Selecciona el buildpack de Node.js, la instancia **Free** y Frankfurt.
-3. Koyeb detectará una versión compatible de Node desde `package.json` y
-   ejecutará `npm start`.
-4. Configura estas variables en el servicio:
+El repositorio incluye `render.yaml`, por lo que la configuración queda
+versionada y no depende de introducir manualmente los comandos del servicio.
+
+1. En Render, selecciona **New > Blueprint** y conecta este repositorio.
+2. Render detectará `render.yaml`; revisa el servicio `contractlens-api` y
+   confirma el plan **Free** y la región **Frankfurt**.
+3. Cuando Render lo solicite, configura los dos secretos:
 
 ```text
 DATABASE_URL=<URL pooled de Neon con sslmode=require>
 GEMINI_API_KEY=<clave de Google AI Studio>
-NODE_ENV=production
-FRONTEND_URL=https://contract-lens-mwx.vercel.app
 ```
 
-Koyeb proporciona `PORT` automáticamente. El endpoint `/health` comprueba tanto
-la API como PostgreSQL; durante la configuración inicial también se puede dejar
-la comprobación TCP predeterminada para tolerar el primer arranque de Neon.
+El Blueprint fija `NODE_ENV`, `FRONTEND_URL`, Node 22, `npm ci`, `npm start` y
+el health check `/health`. Render proporciona `PORT` automáticamente. No uses la
+base de datos de Render: la aplicación debe seguir conectada a la URL **pooled**
+de Neon.
 
 ### 3. Frontend en Vercel
 
 - **Root Directory:** `frontend` (preset Vite, autodetectado).
 - Variable de entorno:
-  - `VITE_API_BASE` — dominio `https://...koyeb.app` del backend, sin barra final.
+  - `VITE_API_BASE` — dominio `https://...onrender.com` del backend, sin barra final.
 
 La variable se incorpora durante el build. Después de cambiarla hay que
 redesplegar el frontend y verificar `/health`, la lista de ejemplos y CORS.
@@ -294,13 +295,12 @@ redesplegar el frontend y verificar `/health`, la lista de ejemplos y CORS.
 
 ## Limitaciones conocidas
 
-- El despliegue público de Koyeb + Neon aún requiere crear los servicios y
-  configurar sus secretos. El repositorio ya contiene la configuración de
-  aplicación necesaria.
-- La instancia gratuita de Koyeb tiene recursos limitados y se suspende por
-  inactividad. La primera petición puede tardar más mientras Koyeb y Neon se
-  reactivan; los PDFs grandes también pueden exceder el tiempo disponible para
-  una única petición síncrona.
+- El despliegue público de Render aún requiere crear el Blueprint y configurar
+  sus dos secretos. Neon ya contiene el esquema y los contratos de muestra.
+- La instancia gratuita de Render se suspende tras 15 minutos sin tráfico y
+  puede tardar cerca de un minuto en responder a la primera petición. Neon
+  también puede reactivarse bajo demanda; los PDFs grandes pueden exceder el
+  tiempo disponible para una única petición síncrona.
 - El modelo `gemini-3.5-flash` tiene un límite de cuota diario en el _free tier_; al agotarse, la cadena de fallback pasa automáticamente a otros modelos (cada uno con su propia cuota). El análisis se guarda en base de datos, así que volver a verlo no consume cuota; solo el chat y la comparación hacen llamadas por uso.
 - El chunking por expresiones regulares está optimizado para contratos en español bien estructurados (Cláusula/Artículo/Estipulación).
 - Los PDFs escaneados sin OCR no tienen texto extraíble y se rechazan con un aviso.

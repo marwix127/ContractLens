@@ -4,7 +4,7 @@
   "description": "Asistente de análisis de contratos con IA, RAG y citas verificables.",
   "main": "index.js",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.12.0 <23"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

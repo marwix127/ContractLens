@@ -1,6 +1,8 @@
 node_modules/
 .env
 .env.local
+.neon
+.claude/settings.local.json
 *.pdf
 uploads/
 ContractLens.md

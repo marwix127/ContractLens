@@ -18,7 +18,7 @@ const candidates = requestedFile
 const envFile = candidates.find(candidate => fs.existsSync(candidate))
 // Si ENV_FILE se indicó expresamente, ese archivo es la fuente seleccionada y
 // debe prevalecer incluso sobre variables heredadas por la terminal. Sin
-// ENV_FILE (caso Koyeb), las variables inyectadas por la plataforma mantienen
+// ENV_FILE (caso Render), las variables inyectadas por la plataforma mantienen
 // la prioridad habitual.
 if (envFile) dotenv.config({ path: envFile, quiet: true, override: Boolean(requestedFile) })
 
