@@ -16,7 +16,11 @@ const candidates = requestedFile
     ]
 
 const envFile = candidates.find(candidate => fs.existsSync(candidate))
-if (envFile) dotenv.config({ path: envFile, quiet: true })
+// Si ENV_FILE se indicó expresamente, ese archivo es la fuente seleccionada y
+// debe prevalecer incluso sobre variables heredadas por la terminal. Sin
+// ENV_FILE (caso Koyeb), las variables inyectadas por la plataforma mantienen
+// la prioridad habitual.
+if (envFile) dotenv.config({ path: envFile, quiet: true, override: Boolean(requestedFile) })
 
 function required(name) {
   const value = process.env[name]?.trim()
@@ -56,7 +60,7 @@ function parseHttpUrl(name, value, { requiredInProduction = false } = {}) {
   return parsed.origin
 }
 
-const databaseUrl = required('DATABASE_URL')
+let databaseUrl = required('DATABASE_URL')
 let parsedDatabaseUrl
 try {
   parsedDatabaseUrl = new URL(databaseUrl)
@@ -65,6 +69,15 @@ try {
 }
 if (!['postgres:', 'postgresql:'].includes(parsedDatabaseUrl.protocol)) {
   throw new Error('[config] DATABASE_URL debe usar postgres:// o postgresql://')
+}
+
+// Neon entrega actualmente `sslmode=require`. node-postgres lo interpreta como
+// verificación completa, pero avisa de que su semántica cambiará en la próxima
+// versión mayor. Hacemos explícita la garantía esperada y conservamos el resto
+// de parámetros de la URL proporcionada por Neon.
+if (parsedDatabaseUrl.hostname.endsWith('.neon.tech') && parsedDatabaseUrl.searchParams.get('sslmode') === 'require') {
+  parsedDatabaseUrl.searchParams.set('sslmode', 'verify-full')
+  databaseUrl = parsedDatabaseUrl.toString()
 }
 
 const config = Object.freeze({

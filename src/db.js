@@ -2,9 +2,9 @@ const { Pool } = require('pg')
 const { config } = require('./config/env')
 
 const pool = new Pool({
-  // Neon entrega la configuración TLS dentro de la propia URL
-  // (`?sslmode=require`). La URL local no incluye ese parámetro y mantiene la
-  // conexión sin TLS contra el contenedor de desarrollo.
+  // Neon entrega la configuración TLS dentro de la propia URL. La capa de
+  // configuración normaliza `sslmode=require` a `verify-full`; la URL local no
+  // incluye SSL y mantiene la conexión directa al contenedor de desarrollo.
   connectionString: config.databaseUrl,
   connectionTimeoutMillis: 10_000,
   enableChannelBinding: true,
