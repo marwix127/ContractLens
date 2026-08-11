@@ -8,12 +8,13 @@
 
 ## Demo
 
-- **Frontend publicado:** https://contract-lens-mwx.vercel.app
+- **Aplicación:** https://contract-lens-mwx.vercel.app
+- **API:** https://contractlens-api-o8wt.onrender.com
+- **Estado del servicio:** https://contractlens-api-o8wt.onrender.com/health
 
-> PostgreSQL + pgvector ya está migrado a Neon y el despliegue del backend en
-> Render está definido como infraestructura reproducible en `render.yaml`.
-> Hasta publicar y enlazar el servicio, utiliza el entorno local descrito en
-> [Puesta en marcha](#puesta-en-marcha) para probar el flujo completo.
+La demo pública conecta Vercel con la API de Render y PostgreSQL + pgvector en
+Neon. Incluye cinco contratos ficticios precargados para recorrer el producto
+sin subir documentación propia.
 
 > ⚠️ ContractLens proporciona un análisis automatizado con fines informativos. **No sustituye el asesoramiento de un profesional legal.**
 
@@ -295,12 +296,13 @@ redesplegar el frontend y verificar `/health`, la lista de ejemplos y CORS.
 
 ## Limitaciones conocidas
 
-- El despliegue público de Render aún requiere crear el Blueprint y configurar
-  sus dos secretos. Neon ya contiene el esquema y los contratos de muestra.
 - La instancia gratuita de Render se suspende tras 15 minutos sin tráfico y
   puede tardar cerca de un minuto en responder a la primera petición. Neon
   también puede reactivarse bajo demanda; los PDFs grandes pueden exceder el
   tiempo disponible para una única petición síncrona.
+- La demo es compartida y todavía no tiene autenticación ni aislamiento por
+  usuario. No se deben subir contratos reales o confidenciales; antes de un uso
+  comercial hay que añadir cuentas, rate limiting y una política de retención.
 - El modelo `gemini-3.5-flash` tiene un límite de cuota diario en el _free tier_; al agotarse, la cadena de fallback pasa automáticamente a otros modelos (cada uno con su propia cuota). El análisis se guarda en base de datos, así que volver a verlo no consume cuota; solo el chat y la comparación hacen llamadas por uso.
 - El chunking por expresiones regulares está optimizado para contratos en español bien estructurados (Cláusula/Artículo/Estipulación).
 - Los PDFs escaneados sin OCR no tienen texto extraíble y se rechazan con un aviso.
