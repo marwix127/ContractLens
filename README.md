@@ -84,6 +84,8 @@ Estas son las decisiones que diferencian el proyecto de un tutorial:
 
 - **Cadena de modelos con fallback.** Como la cuota de Gemini es _por modelo_, si el modelo principal se agota (429) o se satura (503) se pasa automáticamente al siguiente de la cadena. Para el 503 (transitorio) se reintenta con backoff antes de saltar; para el 429 (cuota) se salta de inmediato. Esto mantiene la app disponible aunque un modelo concreto esté caído o sin cuota. Compartido por análisis, chat y comparación.
 
+- **Protección de la demo pública.** Las subidas y todas las operaciones con Gemini comparten límites por IP, además de cuotas globales de ráfaga y diarias y un máximo de tres operaciones de IA concurrentes. Las respuestas `429` publican cabeceras `RateLimit` y `Retry-After`; `/health` queda excluido y cachea brevemente su comprobación de Neon. Los PDFs se limitan a 5 MB y 100 páginas, las preguntas a 2.000 caracteres y los análisis ya guardados se reutilizan sin gastar la cuota global.
+
 - **Comparación de versiones.** Dos contratos → una llamada con structured output que devuelve los cambios (añadido/eliminado/modificado con impacto y valores antes/después) y cómo cambia el perfil de riesgo.
 
 - **Disclaimer legal siempre visible** en la interfaz y en las respuestas del análisis.
@@ -281,7 +283,7 @@ redesplegar el frontend y verificar `/health`, la lista de ejemplos y CORS.
 |--------|------|-------------|
 | `GET`  | `/health` | Comprueba que la API y PostgreSQL están disponibles |
 | `POST` | `/contracts` | Sube un PDF (campo `file`): extrae texto, chunking e indexado |
-| `GET`  | `/contracts` | Lista los contratos |
+| `GET`  | `/contracts` | Lista solo las muestras; `.env.local.example` habilita el listado local completo |
 | `GET`  | `/contracts/samples` | Lista los contratos de muestra |
 | `GET`  | `/contracts/:id` | Detalle de un contrato |
 | `GET`  | `/contracts/:id/file` | Sirve el PDF original |
@@ -301,8 +303,14 @@ redesplegar el frontend y verificar `/health`, la lista de ejemplos y CORS.
   también puede reactivarse bajo demanda; los PDFs grandes pueden exceder el
   tiempo disponible para una única petición síncrona.
 - La demo es compartida y todavía no tiene autenticación ni aislamiento por
-  usuario. No se deben subir contratos reales o confidenciales; antes de un uso
-  comercial hay que añadir cuentas, rate limiting y una política de retención.
+  usuario. El listado público solo devuelve las muestras y hay rate limiting,
+  pero los documentos subidos permanecen almacenados. No se deben usar contratos
+  reales o confidenciales; antes de un uso comercial hacen falta cuentas y una
+  política de retención/borrado.
+- Los contadores del rate limiting son una protección _best effort_: viven en
+  memoria porque la demo utiliza una única instancia y se reinician cuando
+  Render suspende, reinicia o redespliega el servicio. Para proteger presupuesto
+  real o escalar habría que moverlos a un almacén compartido y persistente.
 - El modelo `gemini-3.5-flash` tiene un límite de cuota diario en el _free tier_; al agotarse, la cadena de fallback pasa automáticamente a otros modelos (cada uno con su propia cuota). El análisis se guarda en base de datos, así que volver a verlo no consume cuota; solo el chat y la comparación hacen llamadas por uso.
 - El chunking por expresiones regulares está optimizado para contratos en español bien estructurados (Cláusula/Artículo/Estipulación).
 - Los PDFs escaneados sin OCR no tienen texto extraíble y se rechazan con un aviso.

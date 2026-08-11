@@ -13,7 +13,7 @@ export default function UploadScreen({ onUploaded }) {
     listSamples().then(setSamples).catch(() => {})
   }, [])
 
-  const MAX_BYTES = 20 * 1024 * 1024 // 20 MB, igual que el límite del backend
+  const MAX_BYTES = 5 * 1024 * 1024 // 5 MB, igual que el límite público del backend
 
   function pickFile(f) {
     setError(null)
@@ -23,7 +23,7 @@ export default function UploadScreen({ onUploaded }) {
       return
     }
     if (f.size > MAX_BYTES) {
-      setError('El archivo supera el límite de 20 MB.')
+      setError('El archivo supera el límite de 5 MB.')
       return
     }
     setFile(f)
@@ -97,6 +97,10 @@ export default function UploadScreen({ onUploaded }) {
           Extrayendo texto, generando embeddings e indexando. Puede tardar unos segundos.
         </p>
       )}
+
+      <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+        Demo pública compartida: utiliza solo contratos ficticios o anonimizados. No subas información confidencial.
+      </p>
 
       {samples.length > 0 && (
         <div className="mt-10">

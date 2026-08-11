@@ -8,6 +8,14 @@ const { getGeminiClient } = require('./gemini')
 const { withGeminiFallback } = require('./retry')
 
 const TOP_K = 5
+const MAX_HISTORY_MESSAGES = 10
+
+class ConversationNotFoundError extends Error {
+  constructor() {
+    super('La conversación no pertenece a este contrato')
+    this.name = 'ConversationNotFoundError'
+  }
+}
 
 const SYSTEM_INSTRUCTION = `Eres un asistente que responde preguntas sobre un contrato concreto. Reglas estrictas:
 
@@ -23,7 +31,14 @@ function toVectorLiteral(vector) {
 }
 
 async function ensureConversation(contractId, conversationId) {
-  if (conversationId) return conversationId
+  if (conversationId) {
+    const { rows } = await pool.query(
+      'SELECT 1 FROM conversations WHERE id = $1 AND contract_id = $2',
+      [conversationId, contractId]
+    )
+    if (rows.length === 0) throw new ConversationNotFoundError()
+    return conversationId
+  }
   const { rows } = await pool.query(
     'INSERT INTO conversations (contract_id) VALUES ($1) RETURNING id',
     [contractId]
@@ -60,7 +75,14 @@ async function prepareChat(contractId, question, conversationId) {
   conversationId = await ensureConversation(contractId, conversationId)
 
   const { rows: history } = await pool.query(
-    'SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at',
+    `SELECT role, content FROM (
+       SELECT role, content, created_at
+       FROM messages
+       WHERE conversation_id = $1
+       ORDER BY created_at DESC
+       LIMIT ${MAX_HISTORY_MESSAGES}
+     ) recent
+     ORDER BY created_at`,
     [conversationId]
   )
 
@@ -145,4 +167,4 @@ async function* chatStream(contractId, question, conversationId) {
   yield { type: 'done' }
 }
 
-module.exports = { chat, chatStream }
+module.exports = { chat, chatStream, ConversationNotFoundError }

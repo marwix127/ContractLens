@@ -4,10 +4,17 @@ const { PDFParse } = require('pdf-parse')
 const pool = require('../db')
 const { ingestContract } = require('../services/ingest')
 const { analyzeContract, DISCLAIMER } = require('../services/analysis')
-const { chat, chatStream } = require('../services/chat')
+const { chat, chatStream, ConversationNotFoundError } = require('../services/chat')
 const { compareContracts } = require('../services/compare')
 const { buildAnalysisPdf } = require('../services/report')
 const { contentDisposition } = require('../http/content-disposition')
+const {
+  aiAdmissionLimiters,
+  aiConcurrencyLimiter,
+  aiCostLimiters,
+  uploadAdmissionLimiters
+} = require('../http/limiters')
+const { config } = require('../config/env')
 
 const router = Router()
 
@@ -24,7 +31,12 @@ router.param('id', (req, res, next, id) => {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  limits: {
+    fields: 0,
+    files: 1,
+    fileSize: config.limits.maxUploadMb * 1024 * 1024,
+    parts: 1
+  },
   fileFilter: (req, file, cb) => {
     if (file.mimetype !== 'application/pdf') {
       return cb(new Error('Solo se aceptan archivos PDF'))
@@ -33,49 +45,96 @@ const upload = multer({
   }
 })
 
-// POST /contracts — subir un PDF y extraer su texto
-router.post('/', upload.single('file'), async (req, res) => {
+async function parseUploadedPdf(req, res, next) {
   if (!req.file) {
     return res.status(400).json({ error: 'Falta el archivo. Envíalo en el campo "file" como multipart/form-data.' })
   }
 
   const parser = new PDFParse({ data: req.file.buffer })
+  let result
   try {
-    const result = await parser.getText()
-
-    if (!result.text || result.text.trim().length === 0) {
-      return res.status(422).json({
-        error: 'El PDF no contiene texto extraíble. Puede ser un documento escaneado sin OCR.'
-      })
-    }
-
-    const { rows } = await pool.query(
-      `INSERT INTO contracts (filename, total_pages, raw_text, pdf_data)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, filename, total_pages, uploaded_at`,
-      [req.file.originalname, result.total, result.text, req.file.buffer]
-    )
-
-    // Chunking + embeddings + guardado en pgvector.
-    const { chunksCreated } = await ingestContract(rows[0].id, result.pages)
-
-    res.status(201).json({
-      contract: rows[0],
-      textLength: result.text.length,
-      chunksCreated
-    })
+    result = await parser.getText()
   } catch (err) {
-    console.error('Error procesando PDF:', err)
-    res.status(422).json({ error: 'No se pudo procesar el PDF. ¿Es un archivo válido?' })
+    console.error('Error leyendo PDF:', err)
+    return res.status(422).json({ error: 'No se pudo procesar el PDF. ¿Es un archivo válido?' })
   } finally {
-    await parser.destroy()
+    try {
+      await parser.destroy()
+    } catch (err) {
+      console.error('Error liberando el parser de PDF:', err.message)
+    }
   }
-})
 
-// GET /contracts — listar contratos subidos
+  if (!result.text || result.text.trim().length === 0) {
+    return res.status(422).json({
+      error: 'El PDF no contiene texto extraíble. Puede ser un documento escaneado sin OCR.'
+    })
+  }
+  if (result.total > config.limits.maxPdfPages) {
+    return res.status(413).json({
+      error: `El PDF supera el límite de ${config.limits.maxPdfPages} páginas de la demo.`
+    })
+  }
+  if (result.text.length > config.limits.maxPdfTextChars) {
+    return res.status(413).json({
+      error: 'El PDF contiene demasiado texto para procesarlo de forma segura en la demo.'
+    })
+  }
+
+  res.locals.pdfResult = result
+  next()
+}
+
+// POST /contracts — subir un PDF y extraer su texto
+router.post(
+  '/',
+  ...uploadAdmissionLimiters,
+  aiConcurrencyLimiter,
+  upload.single('file'),
+  parseUploadedPdf,
+  ...aiCostLimiters,
+  async (req, res) => {
+    const result = res.locals.pdfResult
+    let contractId
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO contracts (filename, total_pages, raw_text, pdf_data)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, filename, total_pages, uploaded_at`,
+        [req.file.originalname, result.total, result.text, req.file.buffer]
+      )
+      contractId = rows[0].id
+
+      // Chunking + embeddings + guardado en pgvector.
+      const { chunksCreated } = await ingestContract(contractId, result.pages)
+
+      return res.status(201).json({
+        contract: rows[0],
+        textLength: result.text.length,
+        chunksCreated
+      })
+    } catch (err) {
+      console.error('Error indexando PDF:', err)
+      if (contractId) {
+        try {
+          await pool.query('DELETE FROM contracts WHERE id = $1', [contractId])
+        } catch (cleanupError) {
+          console.error('No se pudo limpiar el contrato tras fallar la ingesta:', cleanupError)
+        }
+      }
+      return res.status(502).json({ error: 'No se pudo indexar el contrato. Inténtalo de nuevo más tarde.' })
+    } finally {
+      res.locals.releaseAiSlot?.()
+    }
+  }
+)
+
+// GET /contracts — solo las muestras salvo opt-in local explícito. Así, una
+// variable NODE_ENV ausente nunca expone por accidente documentos de usuarios.
 router.get('/', async (req, res) => {
+  const where = config.exposeAllContracts ? '' : 'WHERE is_sample = true'
   const { rows } = await pool.query(
-    'SELECT id, filename, total_pages, uploaded_at FROM contracts ORDER BY uploaded_at DESC'
+    `SELECT id, filename, total_pages, uploaded_at FROM contracts ${where} ORDER BY uploaded_at DESC`
   )
   res.json({ contracts: rows })
 })
@@ -96,6 +155,7 @@ router.get('/:id/file', async (req, res) => {
     return res.status(404).json({ error: 'PDF no disponible' })
   }
   res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
   res.setHeader('Content-Disposition', contentDisposition('inline', rows[0].filename))
   res.send(rows[0].pdf_data)
 })
@@ -112,8 +172,24 @@ router.get('/:id', async (req, res) => {
   res.json({ contract: rows[0] })
 })
 
-// POST /contracts/:id/analyze — análisis inicial con Gemini Flash (5-15 s)
-router.post('/:id/analyze', async (req, res) => {
+async function prepareAnalysis(req, res, next) {
+  const { rows: cached } = await pool.query(
+    `SELECT id, summary, extracted_data, risks, created_at
+     FROM analyses WHERE contract_id = $1
+     ORDER BY created_at DESC LIMIT 1`,
+    [req.params.id]
+  )
+  if (cached.length > 0) {
+    return res.json({
+      analysisId: cached[0].id,
+      summary: cached[0].summary,
+      extracted_data: cached[0].extracted_data,
+      risks: cached[0].risks,
+      disclaimer: DISCLAIMER,
+      cached: true
+    })
+  }
+
   const { rows } = await pool.query(
     'SELECT raw_text FROM contracts WHERE id = $1',
     [req.params.id]
@@ -122,10 +198,16 @@ router.post('/:id/analyze', async (req, res) => {
     return res.status(404).json({ error: 'Contrato no encontrado' })
   }
 
-  try {
-    const analysis = await analyzeContract(rows[0].raw_text)
+  res.locals.contractText = rows[0].raw_text
+  next()
+}
 
-    // upsert: un análisis por contrato; re-analizar reemplaza el anterior.
+// POST /contracts/:id/analyze — análisis inicial con Gemini Flash (5-15 s)
+router.post('/:id/analyze', ...aiAdmissionLimiters, prepareAnalysis, aiConcurrencyLimiter, ...aiCostLimiters, async (req, res) => {
+  try {
+    const analysis = await analyzeContract(res.locals.contractText)
+
+    // La consulta inicial evita regenerar un análisis ya persistido.
     const { rows: saved } = await pool.query(
       `INSERT INTO analyses (contract_id, summary, extracted_data, risks)
        VALUES ($1, $2, $3, $4)
@@ -137,6 +219,8 @@ router.post('/:id/analyze', async (req, res) => {
   } catch (err) {
     console.error('Error en análisis:', err)
     res.status(502).json({ error: 'No se pudo generar el análisis con el modelo.' })
+  } finally {
+    res.locals.releaseAiSlot?.()
   }
 })
 
@@ -171,6 +255,7 @@ router.get('/:id/analysis/pdf', async (req, res) => {
     const pdf = await buildAnalysisPdf({ filename: rows[0].filename, analysis: rows[0] })
     const safeName = rows[0].filename.replace(/\.pdf$/i, '').replace(/[^\w.-]+/g, '_')
     res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
     res.setHeader('Content-Disposition', contentDisposition('attachment', `analisis-${safeName}.pdf`))
     res.send(pdf)
   } catch (err) {
@@ -179,11 +264,16 @@ router.get('/:id/analysis/pdf', async (req, res) => {
   }
 })
 
-// POST /contracts/:id/chat — pregunta sobre el contrato (RAG con Gemini)
-router.post('/:id/chat', async (req, res) => {
+async function prepareChatRequest(req, res, next) {
   const { question, conversationId } = req.body || {}
   if (!question || typeof question !== 'string' || !question.trim()) {
     return res.status(400).json({ error: 'Falta "question" en el cuerpo de la petición.' })
+  }
+  if (question.trim().length > config.limits.maxQuestionChars) {
+    return res.status(400).json({ error: `La pregunta no puede superar ${config.limits.maxQuestionChars} caracteres.` })
+  }
+  if (conversationId != null && (typeof conversationId !== 'string' || !UUID_RE.test(conversationId))) {
+    return res.status(400).json({ error: 'conversationId no es válido.' })
   }
 
   // Verificar que el contrato existe y tiene chunks indexados.
@@ -192,51 +282,66 @@ router.post('/:id/chat', async (req, res) => {
     return res.status(404).json({ error: 'Contrato no encontrado' })
   }
 
+  if (conversationId) {
+    const { rows: conversations } = await pool.query(
+      'SELECT 1 FROM conversations WHERE id = $1 AND contract_id = $2',
+      [conversationId, req.params.id]
+    )
+    if (conversations.length === 0) {
+      return res.status(404).json({ error: 'La conversación no pertenece a este contrato' })
+    }
+  }
+
+  res.locals.chatQuestion = question.trim()
+  res.locals.conversationId = conversationId
+  next()
+}
+
+// POST /contracts/:id/chat — pregunta sobre el contrato (RAG con Gemini)
+router.post('/:id/chat', ...aiAdmissionLimiters, prepareChatRequest, aiConcurrencyLimiter, ...aiCostLimiters, async (req, res) => {
   try {
-    const result = await chat(req.params.id, question.trim(), conversationId)
+    const result = await chat(req.params.id, res.locals.chatQuestion, res.locals.conversationId)
     res.json({ ...result, disclaimer: DISCLAIMER })
   } catch (err) {
+    if (err instanceof ConversationNotFoundError) {
+      return res.status(404).json({ error: err.message })
+    }
     console.error('Error en el chat:', err)
     res.status(502).json({ error: 'No se pudo generar la respuesta.' })
+  } finally {
+    res.locals.releaseAiSlot?.()
   }
 })
 
 // POST /contracts/:id/chat/stream — igual que /chat pero con respuesta SSE
-router.post('/:id/chat/stream', async (req, res) => {
-  const { question, conversationId } = req.body || {}
-  if (!question || typeof question !== 'string' || !question.trim()) {
-    return res.status(400).json({ error: 'Falta "question" en el cuerpo de la petición.' })
-  }
-
-  const { rows } = await pool.query('SELECT 1 FROM contracts WHERE id = $1', [req.params.id])
-  if (rows.length === 0) {
-    return res.status(404).json({ error: 'Contrato no encontrado' })
-  }
-
+router.post('/:id/chat/stream', ...aiAdmissionLimiters, prepareChatRequest, aiConcurrencyLimiter, ...aiCostLimiters, async (req, res) => {
   // Cabeceras Server-Sent Events.
   res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders()
 
   const send = (event) => res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
 
   try {
-    for await (const event of chatStream(req.params.id, question.trim(), conversationId)) {
+    for await (const event of chatStream(req.params.id, res.locals.chatQuestion, res.locals.conversationId)) {
       if (event.type === 'meta') event.disclaimer = DISCLAIMER
       send(event)
     }
   } catch (err) {
+    if (err instanceof ConversationNotFoundError) {
+      send({ type: 'error', error: err.message })
+      return
+    }
     console.error('Error en el chat (stream):', err)
     send({ type: 'error', error: 'No se pudo generar la respuesta.' })
   } finally {
     res.end()
+    res.locals.releaseAiSlot?.()
   }
 })
 
-// POST /contracts/compare — compara dos versiones de un contrato.
-// Body: { fromId, toId } (versión anterior y nueva).
-router.post('/compare', async (req, res) => {
+async function prepareComparison(req, res, next) {
   const { fromId, toId } = req.body || {}
   if (!fromId || !toId) {
     return res.status(400).json({ error: 'Faltan "fromId" y "toId".' })
@@ -258,6 +363,16 @@ router.post('/compare', async (req, res) => {
     return res.status(404).json({ error: 'Contrato no encontrado' })
   }
 
+  res.locals.comparisonBefore = before
+  res.locals.comparisonAfter = after
+  next()
+}
+
+// POST /contracts/compare — compara dos versiones de un contrato.
+// Body: { fromId, toId } (versión anterior y nueva).
+router.post('/compare', ...aiAdmissionLimiters, prepareComparison, aiConcurrencyLimiter, ...aiCostLimiters, async (req, res) => {
+  const before = res.locals.comparisonBefore
+  const after = res.locals.comparisonAfter
   try {
     const comparison = await compareContracts(before.raw_text, after.raw_text)
     res.json({
@@ -269,6 +384,8 @@ router.post('/compare', async (req, res) => {
   } catch (err) {
     console.error('Error en la comparación:', err)
     res.status(502).json({ error: 'No se pudo generar la comparación.' })
+  } finally {
+    res.locals.releaseAiSlot?.()
   }
 })
 

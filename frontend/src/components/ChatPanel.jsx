@@ -6,6 +6,7 @@ const SUGGESTIONS = [
   '¿Cuándo vence el contrato?',
   '¿Qué penalizaciones incluye?'
 ]
+const MAX_QUESTION_CHARS = 2000
 
 function Citations({ citations }) {
   if (!citations?.length) return null
@@ -118,6 +119,7 @@ export default function ChatPanel({ contractId }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          maxLength={MAX_QUESTION_CHARS}
           placeholder="Escribe tu pregunta…"
           className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
         />
