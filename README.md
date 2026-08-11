@@ -10,10 +10,10 @@
 
 - **Frontend publicado:** https://contract-lens-mwx.vercel.app
 
-> El frontend continúa publicado en Vercel, pero el backend público de Railway
-> está actualmente inactivo porque finalizó el período gratuito. Para probar el
-> flujo completo, utiliza el entorno local con Docker descrito en
-> [Puesta en marcha](#puesta-en-marcha).
+> La migración del backend a Koyeb y de PostgreSQL a Neon está preparada en el
+> repositorio, pero falta crear y enlazar ambos servicios. Hasta completar ese
+> paso, utiliza el entorno local descrito en
+> [Puesta en marcha](#puesta-en-marcha) para probar el flujo completo.
 
 > ⚠️ ContractLens proporciona un análisis automatizado con fines informativos. **No sustituye el asesoramiento de un profesional legal.**
 
@@ -53,9 +53,10 @@
 - `react-pdf` — visor de PDF integrado (carga diferida)
 
 **Infraestructura**
-- Backend y Postgres + pgvector reproducibles en local mediante **Docker Compose**
+- PostgreSQL + pgvector reproducible en local mediante **Docker Compose**
+- Backend desplegable en **Koyeb** con el buildpack nativo de Node.js
+- PostgreSQL administrado en **Neon** con conexión agrupada y TLS
 - Frontend publicado en **Vercel**
-- Despliegue anterior del backend en **Railway** (actualmente inactivo)
 - Variables de entorno separadas para local (`.env.local`) y despliegue
 
 **Modelos (Gemini)**
@@ -70,9 +71,9 @@ Estas son las decisiones que diferencian el proyecto de un tutorial:
 
 - **Un solo proveedor (Gemini) para embeddings, análisis y chat.** Simplifica la operación y aprovecha un único origen de cuota/credenciales. El diseño aísla cada tarea en su servicio, así que cambiar de modelo o proveedor es trivial.
 
-- **pgvector en vez de una base vectorial dedicada (Pinecone, etc.).** Para este volumen, mantener los vectores junto a los datos relacionales en Postgres elimina una pieza de infraestructura, simplifica los _joins_ (chunk ↔ contrato) y abarata el despliegue. Índice `ivfflat` con distancia coseno.
+- **pgvector en vez de una base vectorial dedicada (Pinecone, etc.).** Para este volumen, mantener los vectores junto a los datos relacionales en Postgres elimina una pieza de infraestructura, simplifica los _joins_ (chunk ↔ contrato) y abarata el despliegue. Índice `HNSW` con distancia coseno, que puede crearse antes de cargar datos y ofrece buen recall para un conjunto pequeño e incremental.
 
-- **Embeddings a 1536 dimensiones y normalizados manualmente.** `gemini-embedding-001` produce 3072 dimensiones por defecto, pero el índice `ivfflat` de pgvector no admite más de 2000. Se solicita `outputDimensionality: 1536`; como Gemini no normaliza los vectores al truncarlos, se normalizan en código para que la distancia coseno sea correcta. (`taskType` diferenciado: `RETRIEVAL_DOCUMENT` al indexar, `RETRIEVAL_QUERY` al preguntar.)
+- **Embeddings a 1536 dimensiones y normalizados manualmente.** `gemini-embedding-001` produce 3072 dimensiones por defecto, pero el tipo `vector` indexado con HNSW admite hasta 2000. Se solicita `outputDimensionality: 1536`; como Gemini no normaliza los vectores al truncarlos, se normalizan en código para que la distancia coseno sea correcta. (`taskType` diferenciado: `RETRIEVAL_DOCUMENT` al indexar, `RETRIEVAL_QUERY` al preguntar.)
 
 - **Chunking semántico por cláusulas, no por tamaño fijo.** Se detectan encabezados de cláusula/artículo con expresiones regulares y se parte el texto en esos límites, conservando **número de página y referencia de cláusula** en cada chunk. Esto es lo que permite las citas precisas del chat. Las cláusulas muy largas se subdividen con solapamiento.
 
@@ -121,7 +122,7 @@ ContractLens/
 
 ### Requisitos
 
-- Node.js 18+
+- Node.js 22.12+
 - Docker Desktop con Docker Compose (opción local recomendada)
 - Una API key de Gemini ([Google AI Studio](https://aistudio.google.com/apikey))
   solo para subida, embeddings, análisis, chat y comparación reales
@@ -177,11 +178,12 @@ el chat RAG completo hay que subir un PDF con una clave configurada.
 ### Configuración manual o remota
 
 También se puede usar cualquier PostgreSQL que tenga la extensión `pgvector`.
-Crea un `.env` con `DATABASE_URL`, `DATABASE_SSL`, `GEMINI_API_KEY`, `PORT` y
-`FRONTEND_URL`, y ejecuta:
+Crea un `.env` con `DATABASE_URL`, `GEMINI_API_KEY`, `PORT` y `FRONTEND_URL`, y
+ejecuta:
 
 ```bash
 npm run migrate
+npm run db:check
 npm run seed
 npm run dev
 ```
@@ -194,6 +196,7 @@ npm run dev
 - `npm run local:migrate` — aplica el esquema a la base local
 - `npm run local:seed` — crea datos QA deterministas sin Gemini
 - `npm run local:dev` — inicia el backend local con recarga automática
+- `npm run migrate:hnsw` — actualiza una base anterior del índice IVFFlat a HNSW
 - `npm run db:reset` — vacía todos los datos de la base configurada
 - `npm run seed` — regenera las muestras completas usando Gemini
 
@@ -211,27 +214,62 @@ quiere reiniciar la base local desde cero.
 
 ## Despliegue
 
-El frontend continúa publicado en **Vercel**. El backend y PostgreSQL estuvieron
-desplegados en **Railway**, pero ese entorno está actualmente inactivo tras
-finalizar el período gratuito. La configuración se conserva como referencia
-para un futuro redespliegue.
+El despliegue objetivo mantiene el frontend en **Vercel**, ejecuta la API
+Express en **Koyeb** y utiliza **Neon** para PostgreSQL + pgvector.
 
-### Backend (configuración anterior de Railway)
+### 1. Base de datos en Neon
 
-- Servicio Node desplegable desde el repositorio con `npm start`.
-- Postgres + pgvector en el mismo proyecto de Railway.
-- Variables de entorno:
-  - `DATABASE_URL` — referencia interna al servicio Postgres (`${{Postgres.DATABASE_URL}}`)
-  - `GEMINI_API_KEY`
-  - `NODE_ENV=production`
-  - `FRONTEND_URL` — URL del frontend, para CORS (la barra final se ignora en código)
-  - `PORT` lo inyecta Railway automáticamente
+1. Crea un proyecto de Neon en una región europea próxima a Frankfurt.
+2. Desde **Connect**, copia primero la URL directa para ejecutar migraciones.
+3. Copia `.env.example` como `.env`, sustituye `DATABASE_URL` por esa URL y
+   completa el resto de variables.
+4. Fuerza el uso de ese archivo porque `.env.local` tiene prioridad en
+   desarrollo:
 
-### Frontend (Vercel)
+```bash
+ENV_FILE=.env npm run migrate
+ENV_FILE=.env npm run db:check
+```
+
+En PowerShell:
+
+```powershell
+$env:ENV_FILE='.env'
+npm.cmd run migrate
+npm.cmd run db:check
+```
+
+La migración activa `vector` y crea el esquema completo. Para la API desplegada,
+utiliza la URL **pooled** de Neon y conserva sus parámetros de seguridad, como
+`sslmode=require`.
+
+### 2. Backend en Koyeb
+
+1. Crea un **Web Service** conectado al repositorio de GitHub.
+2. Selecciona el buildpack de Node.js, la instancia **Free** y Frankfurt.
+3. Koyeb detectará una versión compatible de Node desde `package.json` y
+   ejecutará `npm start`.
+4. Configura estas variables en el servicio:
+
+```text
+DATABASE_URL=<URL pooled de Neon con sslmode=require>
+GEMINI_API_KEY=<clave de Google AI Studio>
+NODE_ENV=production
+FRONTEND_URL=https://contract-lens-mwx.vercel.app
+```
+
+Koyeb proporciona `PORT` automáticamente. El endpoint `/health` comprueba tanto
+la API como PostgreSQL; durante la configuración inicial también se puede dejar
+la comprobación TCP predeterminada para tolerar el primer arranque de Neon.
+
+### 3. Frontend en Vercel
 
 - **Root Directory:** `frontend` (preset Vite, autodetectado).
 - Variable de entorno:
-  - `VITE_API_BASE` — URL pública del backend, **con `https://` y sin barra final**. Se incrusta en tiempo de build, así que al cambiarla hay que **redesplegar**.
+  - `VITE_API_BASE` — dominio `https://...koyeb.app` del backend, sin barra final.
+
+La variable se incorpora durante el build. Después de cambiarla hay que
+redesplegar el frontend y verificar `/health`, la lista de ejemplos y CORS.
 
 ---
 
@@ -256,10 +294,15 @@ para un futuro redespliegue.
 
 ## Limitaciones conocidas
 
-- El backend público está inactivo; la demo completa debe ejecutarse localmente.
+- El despliegue público de Koyeb + Neon aún requiere crear los servicios y
+  configurar sus secretos. El repositorio ya contiene la configuración de
+  aplicación necesaria.
+- La instancia gratuita de Koyeb tiene recursos limitados y se suspende por
+  inactividad. La primera petición puede tardar más mientras Koyeb y Neon se
+  reactivan; los PDFs grandes también pueden exceder el tiempo disponible para
+  una única petición síncrona.
 - El modelo `gemini-3.5-flash` tiene un límite de cuota diario en el _free tier_; al agotarse, la cadena de fallback pasa automáticamente a otros modelos (cada uno con su propia cuota). El análisis se guarda en base de datos, así que volver a verlo no consume cuota; solo el chat y la comparación hacen llamadas por uso.
 - El chunking por expresiones regulares está optimizado para contratos en español bien estructurados (Cláusula/Artículo/Estipulación).
 - Los PDFs escaneados sin OCR no tienen texto extraíble y se rechazan con un aviso.
 
 ---
-

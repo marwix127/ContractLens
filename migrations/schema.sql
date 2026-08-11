@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS chunks (
   metadata JSONB
 );
 
-CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING ivfflat (embedding vector_cosine_ops);
+-- HNSW puede crearse antes de cargar datos y ofrece mejor relación recall/latencia
+-- que IVFFlat para el volumen pequeño e incremental de la demo.
+CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops);
 
 -- Análisis estructurado del contrato
 CREATE TABLE IF NOT EXISTS analyses (

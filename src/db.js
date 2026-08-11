@@ -1,10 +1,19 @@
 const { Pool } = require('pg')
+const { config } = require('./config/env')
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  // Railway no exige SSL (ni en la red interna ni en el proxy público). Se deja
-  // como opt-in vía DATABASE_SSL por si se usa un Postgres que sí lo requiera.
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false
+  // Neon entrega la configuración TLS dentro de la propia URL
+  // (`?sslmode=require`). La URL local no incluye ese parámetro y mantiene la
+  // conexión sin TLS contra el contenedor de desarrollo.
+  connectionString: config.databaseUrl,
+  connectionTimeoutMillis: 10_000,
+  enableChannelBinding: true,
+  idleTimeoutMillis: 30_000,
+  max: 5
+})
+
+pool.on('error', (err) => {
+  console.error('Error inesperado en una conexión inactiva de PostgreSQL:', err.message)
 })
 
 module.exports = pool

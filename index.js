@@ -1,4 +1,4 @@
-require('./src/config/env')
+const { config } = require('./src/config/env')
 
 const express = require('express')
 const cors = require('cors')
@@ -6,13 +6,13 @@ const contractsRouter = require('./src/routes/contracts')
 const pool = require('./src/db')
 
 const app = express()
-const PORT = process.env.PORT || 3000
+const PORT = config.port
 
 // En producción, el frontend (Vercel) está en otro origen: permitimos solo el
 // configurado en FRONTEND_URL. En local, sin configurar, se permite cualquiera.
 // Se normaliza quitando la barra final: el Origin del navegador nunca la lleva
 // y CORS compara de forma exacta (una barra de más bloquea todas las llamadas).
-const allowedOrigin = process.env.FRONTEND_URL?.replace(/\/+$/, '')
+const allowedOrigin = config.frontendUrl
 app.use(cors({ origin: allowedOrigin || true }))
 app.use(express.json())
 
@@ -46,6 +46,25 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' })
 })
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`)
 })
+
+let shuttingDown = false
+async function shutdown(signal) {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(`${signal} recibido; cerrando el servidor...`)
+
+  server.close(async (err) => {
+    try {
+      await pool.end()
+    } finally {
+      if (err) console.error('Error cerrando el servidor:', err.message)
+      process.exit(err ? 1 : 0)
+    }
+  })
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT', () => shutdown('SIGINT'))

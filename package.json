@@ -1,8 +1,11 @@
 {
   "name": "contractlens",
   "version": "1.0.0",
-  "description": "",
+  "description": "Asistente de análisis de contratos con IA, RAG y citas verificables.",
   "main": "index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
@@ -15,6 +18,8 @@
     "local:start": "node index.js",
     "local:dev": "nodemon index.js",
     "migrate": "node migrations/migrate.js",
+    "migrate:hnsw": "node migrations/migrate.js 003_use_hnsw_index.sql",
+    "db:check": "node migrations/check.js",
     "db:reset": "node migrations/reset.js",
     "seed": "node seed/seed-samples.js"
   },

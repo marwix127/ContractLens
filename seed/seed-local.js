@@ -136,19 +136,23 @@ async function seedLocal() {
     SAMPLES.map(async sample => ({ ...sample, pdf: await buildPdf(sample) }))
   )
 
+  let client
+  let transactionStarted = false
   try {
-    await pool.query('BEGIN')
-    await pool.query('DELETE FROM contracts WHERE filename LIKE $1', [`${LOCAL_PREFIX}%`])
+    client = await pool.connect()
+    await client.query('BEGIN')
+    transactionStarted = true
+    await client.query('DELETE FROM contracts WHERE filename LIKE $1', [`${LOCAL_PREFIX}%`])
 
     for (const sample of prepared) {
-      const { rows } = await pool.query(
+      const { rows } = await client.query(
         `INSERT INTO contracts (filename, total_pages, raw_text, pdf_data, is_sample)
          VALUES ($1, 1, $2, $3, true)
          RETURNING id`,
         [sample.filename, sample.rawText, sample.pdf]
       )
 
-      await pool.query(
+      await client.query(
         `INSERT INTO analyses (contract_id, summary, extracted_data, risks)
          VALUES ($1, $2, $3, $4)`,
         [
@@ -162,12 +166,14 @@ async function seedLocal() {
       console.log(`✓ ${sample.filename}`)
     }
 
-    await pool.query('COMMIT')
+    await client.query('COMMIT')
+    transactionStarted = false
     console.log(`Seed local completado: ${prepared.length} contratos sin llamadas a Gemini.`)
   } catch (err) {
-    await pool.query('ROLLBACK')
+    if (client && transactionStarted) await client.query('ROLLBACK')
     throw err
   } finally {
+    client?.release()
     await pool.end()
   }
 }

@@ -1,7 +1,7 @@
 // Cliente de la API de ContractLens.
 // En desarrollo, VITE_API_BASE está vacía y Vite hace proxy de /contracts al
 // backend (ver vite.config.js). En producción se define con la URL del backend
-// en Railway (el navegador llama directo; el backend permite CORS).
+// en Koyeb (el navegador llama directo; el backend permite CORS).
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 // URL del PDF original (para el visor).
