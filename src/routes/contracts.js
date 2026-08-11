@@ -7,6 +7,7 @@ const { analyzeContract, DISCLAIMER } = require('../services/analysis')
 const { chat, chatStream } = require('../services/chat')
 const { compareContracts } = require('../services/compare')
 const { buildAnalysisPdf } = require('../services/report')
+const { contentDisposition } = require('../http/content-disposition')
 
 const router = Router()
 
@@ -95,7 +96,7 @@ router.get('/:id/file', async (req, res) => {
     return res.status(404).json({ error: 'PDF no disponible' })
   }
   res.setHeader('Content-Type', 'application/pdf')
-  res.setHeader('Content-Disposition', `inline; filename="${rows[0].filename}"`)
+  res.setHeader('Content-Disposition', contentDisposition('inline', rows[0].filename))
   res.send(rows[0].pdf_data)
 })
 
@@ -170,7 +171,7 @@ router.get('/:id/analysis/pdf', async (req, res) => {
     const pdf = await buildAnalysisPdf({ filename: rows[0].filename, analysis: rows[0] })
     const safeName = rows[0].filename.replace(/\.pdf$/i, '').replace(/[^\w.-]+/g, '_')
     res.setHeader('Content-Type', 'application/pdf')
-    res.setHeader('Content-Disposition', `attachment; filename="analisis-${safeName}.pdf"`)
+    res.setHeader('Content-Disposition', contentDisposition('attachment', `analisis-${safeName}.pdf`))
     res.send(pdf)
   } catch (err) {
     console.error('Error generando el informe PDF:', err)
