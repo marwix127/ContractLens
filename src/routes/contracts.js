@@ -1,22 +1,48 @@
 const { Router } = require('express')
 const multer = require('multer')
-const { PDFParse } = require('pdf-parse')
-const pool = require('../db')
-const { ingestContract } = require('../services/ingest')
-const { analyzeContract, DISCLAIMER } = require('../services/analysis')
-const { chat, chatStream, ConversationNotFoundError } = require('../services/chat')
-const { compareContracts } = require('../services/compare')
-const { buildAnalysisPdf } = require('../services/report')
 const { contentDisposition } = require('../http/content-disposition')
-const {
-  aiAdmissionLimiters,
-  aiConcurrencyLimiter,
-  aiCostLimiters,
-  uploadAdmissionLimiters
-} = require('../http/limiters')
-const { config } = require('../config/env')
 
-const router = Router()
+function createContractsRouter({
+  analysisService,
+  appConfig,
+  chatService,
+  compareService,
+  ingestService,
+  limiters,
+  logger = console,
+  PdfParser,
+  pool,
+  reportService
+} = {}) {
+  const required = {
+    analysisService,
+    appConfig,
+    chatService,
+    compareService,
+    ingestService,
+    limiters,
+    PdfParser,
+    pool,
+    reportService
+  }
+  const missing = Object.entries(required).filter(([, value]) => !value).map(([name]) => name)
+  if (missing.length) {
+    throw new TypeError(`createContractsRouter requiere: ${missing.join(', ')}`)
+  }
+
+  const { analyzeContract, DISCLAIMER } = analysisService
+  const { chat, chatStream, ConversationNotFoundError } = chatService
+  const { compareContracts } = compareService
+  const { ingestContract } = ingestService
+  const { buildAnalysisPdf } = reportService
+  const {
+    aiAdmissionLimiters,
+    aiConcurrencyLimiter,
+    aiCostLimiters,
+    uploadAdmissionLimiters
+  } = limiters
+  const config = appConfig
+  const router = Router()
 
 // Un :id que no sea un UUID válido haría fallar la consulta a Postgres con un
 // 500; lo interceptamos y devolvemos 404 de forma centralizada para todas las
@@ -32,10 +58,10 @@ router.param('id', (req, res, next, id) => {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fields: 0,
     files: 1,
     fileSize: config.limits.maxUploadMb * 1024 * 1024,
-    parts: 1
+    fields: 0,
+    parts: 2
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype !== 'application/pdf') {
@@ -50,18 +76,18 @@ async function parseUploadedPdf(req, res, next) {
     return res.status(400).json({ error: 'Falta el archivo. Envíalo en el campo "file" como multipart/form-data.' })
   }
 
-  const parser = new PDFParse({ data: req.file.buffer })
+  const parser = new PdfParser({ data: req.file.buffer })
   let result
   try {
     result = await parser.getText()
   } catch (err) {
-    console.error('Error leyendo PDF:', err)
+    logger.error('Error leyendo PDF:', err)
     return res.status(422).json({ error: 'No se pudo procesar el PDF. ¿Es un archivo válido?' })
   } finally {
     try {
       await parser.destroy()
     } catch (err) {
-      console.error('Error liberando el parser de PDF:', err.message)
+      logger.error('Error liberando el parser de PDF:', err.message)
     }
   }
 
@@ -114,12 +140,12 @@ router.post(
         chunksCreated
       })
     } catch (err) {
-      console.error('Error indexando PDF:', err)
+      logger.error('Error indexando PDF:', err)
       if (contractId) {
         try {
           await pool.query('DELETE FROM contracts WHERE id = $1', [contractId])
         } catch (cleanupError) {
-          console.error('No se pudo limpiar el contrato tras fallar la ingesta:', cleanupError)
+          logger.error('No se pudo limpiar el contrato tras fallar la ingesta:', cleanupError)
         }
       }
       return res.status(502).json({ error: 'No se pudo indexar el contrato. Inténtalo de nuevo más tarde.' })
@@ -217,7 +243,7 @@ router.post('/:id/analyze', ...aiAdmissionLimiters, prepareAnalysis, aiConcurren
 
     res.status(201).json({ analysisId: saved[0].id, ...analysis })
   } catch (err) {
-    console.error('Error en análisis:', err)
+    logger.error('Error en análisis:', err)
     res.status(502).json({ error: 'No se pudo generar el análisis con el modelo.' })
   } finally {
     res.locals.releaseAiSlot?.()
@@ -259,7 +285,7 @@ router.get('/:id/analysis/pdf', async (req, res) => {
     res.setHeader('Content-Disposition', contentDisposition('attachment', `analisis-${safeName}.pdf`))
     res.send(pdf)
   } catch (err) {
-    console.error('Error generando el informe PDF:', err)
+    logger.error('Error generando el informe PDF:', err)
     res.status(500).json({ error: 'No se pudo generar el informe PDF.' })
   }
 })
@@ -306,7 +332,7 @@ router.post('/:id/chat', ...aiAdmissionLimiters, prepareChatRequest, aiConcurren
     if (err instanceof ConversationNotFoundError) {
       return res.status(404).json({ error: err.message })
     }
-    console.error('Error en el chat:', err)
+    logger.error('Error en el chat:', err)
     res.status(502).json({ error: 'No se pudo generar la respuesta.' })
   } finally {
     res.locals.releaseAiSlot?.()
@@ -333,7 +359,7 @@ router.post('/:id/chat/stream', ...aiAdmissionLimiters, prepareChatRequest, aiCo
       send({ type: 'error', error: err.message })
       return
     }
-    console.error('Error en el chat (stream):', err)
+    logger.error('Error en el chat (stream):', err)
     send({ type: 'error', error: 'No se pudo generar la respuesta.' })
   } finally {
     res.end()
@@ -382,11 +408,14 @@ router.post('/compare', ...aiAdmissionLimiters, prepareComparison, aiConcurrency
       disclaimer: DISCLAIMER
     })
   } catch (err) {
-    console.error('Error en la comparación:', err)
+    logger.error('Error en la comparación:', err)
     res.status(502).json({ error: 'No se pudo generar la comparación.' })
   } finally {
     res.locals.releaseAiSlot?.()
   }
 })
 
-module.exports = router
+  return router
+}
+
+module.exports = { createContractsRouter }

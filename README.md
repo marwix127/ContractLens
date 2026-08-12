@@ -1,5 +1,7 @@
 # ContractLens
 
+[![CI](https://github.com/marwix127/ContractLens/actions/workflows/ci.yml/badge.svg)](https://github.com/marwix127/ContractLens/actions/workflows/ci.yml)
+
 > Asistente de análisis de contratos con IA. Sube un contrato en PDF y obtén, en segundos, un resumen ejecutivo, los datos clave extraídos, una detección de riesgos con nivel de severidad y un chat para preguntar sobre el documento con citas a página y cláusula.
 
 **Problema que resuelve:** la revisión inicial de un contrato lleva entre 1 y 2 horas. ContractLens la reduce a unos minutos, dando a despachos pequeños y pymes una primera lectura estructurada antes de la revisión profesional.
@@ -96,10 +98,13 @@ Estas son las decisiones que diferencian el proyecto de un tutorial:
 
 ```
 ContractLens/
+├── .github/workflows/ci.yml # tests y build automáticos en GitHub Actions
 ├── compose.yaml              # PostgreSQL + pgvector para desarrollo local
-├── index.js                  # servidor Express
+├── index.js                  # composición y ciclo de vida del servidor
 ├── src/
+│   ├── app.js                # fábrica Express testeable sin abrir puertos
 │   ├── db.js                 # pool de conexión a Postgres
+│   ├── http/                 # headers, límites y control de concurrencia
 │   ├── routes/contracts.js   # endpoints
 │   └── services/
 │       ├── gemini.js         # cliente Gemini con inicialización diferida
@@ -110,6 +115,7 @@ ContractLens/
 │       ├── chat.js           # RAG: retrieval + respuesta (normal y streaming)
 │       └── retry.js          # reintentos con backoff para Gemini
 ├── migrations/               # schema y migraciones
+├── test/                     # pruebas unitarias e integración HTTP
 ├── seed/
 │   ├── seed-samples.js       # muestras completas generadas con Gemini
 │   └── seed-local.js         # datos QA deterministas sin consumir Gemini
@@ -195,6 +201,9 @@ npm run dev
 
 ### Scripts útiles
 
+- `npm test` — ejecuta toda la suite sin conectarse a Neon ni llamar a Gemini
+- `npm run test:unit` — pruebas unitarias de headers y rate limiting
+- `npm run test:integration` — API Express completa con DB/IA simuladas
 - `npm run local:db:up` — levanta PostgreSQL + pgvector local
 - `npm run local:migrate` — aplica el esquema a la base local
 - `npm run local:seed` — crea datos QA deterministas sin Gemini
@@ -202,6 +211,17 @@ npm run dev
 - `npm run migrate:hnsw` — actualiza una base anterior del índice IVFFlat a HNSW
 - `npm run db:reset` — vacía todos los datos de la base configurada
 - `npm run seed` — regenera las muestras completas usando Gemini
+
+### Calidad y CI
+
+La suite de integración levanta la misma aplicación Express sobre un puerto
+efímero, pero inyecta una base de datos y servicios de IA simulados. Comprueba
+CORS, health/readiness, límites JSON y multipart, privacidad del listado,
+análisis cacheado, descarga Unicode, limpieza tras una ingesta fallida, SSE y
+rate limiting sin necesitar secretos ni consumir cuota externa.
+
+GitHub Actions ejecuta en paralelo los tests del backend y el build de
+producción del frontend con Node 22 en cada push y pull request a `master`.
 
 Para detener la base de datos:
 
