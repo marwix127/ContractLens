@@ -86,8 +86,6 @@ flowchart LR
 
 ## Decisiones técnicas
 
-Estas son las decisiones que diferencian el proyecto de un tutorial:
-
 - **Un solo proveedor (Gemini) para embeddings, análisis y chat.** Simplifica la operación y aprovecha un único origen de cuota/credenciales. Cada tarea está aislada en su propio servicio, lo que reduce el acoplamiento si más adelante cambia el modelo o el proveedor.
 
 - **pgvector en vez de una base vectorial dedicada (Pinecone, etc.).** Para este volumen, mantener los vectores junto a los datos relacionales en Postgres elimina una pieza de infraestructura, simplifica los _joins_ (chunk ↔ contrato) y abarata el despliegue. Índice `HNSW` con distancia coseno, que puede crearse antes de cargar datos y ofrece buen recall para un conjunto pequeño e incremental.
