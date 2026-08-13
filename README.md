@@ -2,17 +2,19 @@
 
 [![CI](https://github.com/marwix127/ContractLens/actions/workflows/ci.yml/badge.svg)](https://github.com/marwix127/ContractLens/actions/workflows/ci.yml)
 
-> Asistente de análisis de contratos con IA. Sube un contrato en PDF y obtén, en segundos, un resumen ejecutivo, los datos clave extraídos, una detección de riesgos con nivel de severidad y un chat para preguntar sobre el documento con citas a página y cláusula.
+> Asistente de análisis de contratos con IA. Convierte un PDF en una vista estructurada con resumen ejecutivo, datos clave, riesgos por severidad y un chat con citas a página y cláusula.
 
-**Problema que resuelve:** la revisión inicial de un contrato lleva entre 1 y 2 horas. ContractLens la reduce a unos minutos, dando a despachos pequeños y pymes una primera lectura estructurada antes de la revisión profesional.
+**Problema que resuelve:** centraliza la primera lectura de un contrato para que
+despachos pequeños y pymes localicen antes las partes, fechas, obligaciones y
+cláusulas que merecen una revisión profesional.
 
 ---
 
 ## Demo
 
-- **Aplicación:** https://contract-lens-mwx.vercel.app
-- **API:** https://contractlens-api-o8wt.onrender.com
-- **Estado del servicio:** https://contractlens-api-o8wt.onrender.com/health
+[Demo en vivo](https://contract-lens-mwx.vercel.app) ·
+[API REST](https://contractlens-api-o8wt.onrender.com) ·
+[Estado del servicio](https://contractlens-api-o8wt.onrender.com/health)
 
 La demo pública conecta Vercel con la API de Render y PostgreSQL + pgvector en
 Neon. Incluye cinco contratos ficticios precargados para recorrer el producto
@@ -22,25 +24,39 @@ sin subir documentación propia.
 
 ---
 
+## Producto en acción
+
+[![Dashboard de ContractLens con resumen, datos clave y chat](docs/images/contractlens-analysis.png)](https://contract-lens-mwx.vercel.app)
+
+_Resumen ejecutivo, partes, fechas, condiciones clave y chat RAG en una sola vista._
+
+[![Riesgos contractuales ordenados por severidad](docs/images/contractlens-risks.png)](https://contract-lens-mwx.vercel.app)
+
+_Cada riesgo conserva su ubicación, explicación, severidad y recomendación._
+
+[Ver la portada](docs/images/contractlens-home.png) ·
+[Ver el visor del documento](docs/images/contractlens-document.png)
+
+Todas las capturas utilizan contratos ficticios incluidos en la demo pública.
+
+---
+
 ## Arquitectura
 
+```mermaid
+flowchart LR
+    U["Usuario"] --> FE["React + Vite<br/>Vercel"]
+    FE -->|"REST + SSE"| API["Express API<br/>Render"]
+    API -->|"PDF"| EXT["pdf-parse<br/>chunking por cláusulas"]
+    EXT -->|"embeddings 1536d"| EMB["Gemini Embeddings"]
+    EMB --> DB[("Neon Postgres<br/>pgvector · HNSW")]
+    API <-->|"SQL + búsqueda vectorial"| DB
+    API -->|"análisis · chat · comparación"| GEN["Gemini Flash"]
+    GEN -->|"JSON + streaming"| API
 ```
-1. El usuario sube un PDF
-        ↓
-2. Extracción de texto por páginas (pdf-parse)
-        ↓
-3. Chunking semántico por cláusulas (página + referencia de cláusula)
-        ↓
-4. Embeddings (Gemini) → pgvector
-        ↓
-5. Análisis inicial con structured output (JSON): resumen, datos clave, riesgos
-        ↓
-6. Persistencia en Postgres (contrato, chunks, análisis)
-        ↓
-7. Dashboard de análisis + visor del PDF + chat lateral
-        ↓
-8. Chat RAG: pregunta → embedding → retrieval top-k → respuesta en streaming con citas
-```
+
+- **Ingesta:** PDF → extracción por páginas → chunking estructural → embeddings → pgvector.
+- **Consulta:** pregunta → recuperación _top-k_ → Gemini → respuesta SSE con citas.
 
 ---
 
@@ -72,25 +88,37 @@ sin subir documentación propia.
 
 Estas son las decisiones que diferencian el proyecto de un tutorial:
 
-- **Un solo proveedor (Gemini) para embeddings, análisis y chat.** Simplifica la operación y aprovecha un único origen de cuota/credenciales. El diseño aísla cada tarea en su servicio, así que cambiar de modelo o proveedor es trivial.
+- **Un solo proveedor (Gemini) para embeddings, análisis y chat.** Simplifica la operación y aprovecha un único origen de cuota/credenciales. Cada tarea está aislada en su propio servicio, lo que reduce el acoplamiento si más adelante cambia el modelo o el proveedor.
 
 - **pgvector en vez de una base vectorial dedicada (Pinecone, etc.).** Para este volumen, mantener los vectores junto a los datos relacionales en Postgres elimina una pieza de infraestructura, simplifica los _joins_ (chunk ↔ contrato) y abarata el despliegue. Índice `HNSW` con distancia coseno, que puede crearse antes de cargar datos y ofrece buen recall para un conjunto pequeño e incremental.
 
 - **Embeddings a 1536 dimensiones y normalizados manualmente.** `gemini-embedding-001` produce 3072 dimensiones por defecto, pero el tipo `vector` indexado con HNSW admite hasta 2000. Se solicita `outputDimensionality: 1536`; como Gemini no normaliza los vectores al truncarlos, se normalizan en código para que la distancia coseno sea correcta. (`taskType` diferenciado: `RETRIEVAL_DOCUMENT` al indexar, `RETRIEVAL_QUERY` al preguntar.)
 
-- **Chunking semántico por cláusulas, no por tamaño fijo.** Se detectan encabezados de cláusula/artículo con expresiones regulares y se parte el texto en esos límites, conservando **número de página y referencia de cláusula** en cada chunk. Esto es lo que permite las citas precisas del chat. Las cláusulas muy largas se subdividen con solapamiento.
+- **Chunking estructural por cláusulas, no solo por tamaño fijo.** Se detectan encabezados de cláusula/artículo con expresiones regulares y se parte el texto en esos límites, conservando **número de página y referencia de cláusula** en cada chunk. Esto permite devolver citas trazables en el chat. Las cláusulas muy largas se subdividen con solapamiento.
 
-- **Structured output (JSON por schema) en el análisis.** El análisis inicial usa un esquema de respuesta de Gemini, lo que garantiza un JSON válido sin parseo frágil.
+- **Structured output (JSON por schema) en el análisis.** El análisis inicial solicita a Gemini un JSON conforme a un esquema, evitando extraer datos de una respuesta de texto libre.
 
-- **RAG con citas, manejo de "no lo sé", historial y streaming.** El chat recupera los fragmentos más relevantes, responde citando página y cláusula, dice explícitamente cuándo la respuesta no está en el documento (evita alucinaciones), mantiene el contexto entre mensajes y emite la respuesta por **Server-Sent Events**.
+- **RAG con citas, manejo de "no lo sé", historial y streaming.** El chat recupera los fragmentos más relevantes, responde citando página y cláusula, indica cuándo la respuesta no está en el documento para reducir respuestas fuera de contexto, mantiene el historial y emite la respuesta por **Server-Sent Events**.
 
-- **Cadena de modelos con fallback.** Como la cuota de Gemini es _por modelo_, si el modelo principal se agota (429) o se satura (503) se pasa automáticamente al siguiente de la cadena. Para el 503 (transitorio) se reintenta con backoff antes de saltar; para el 429 (cuota) se salta de inmediato. Esto mantiene la app disponible aunque un modelo concreto esté caído o sin cuota. Compartido por análisis, chat y comparación.
+- **Cadena de modelos con fallback.** Si el modelo principal devuelve un 429 o 503 se pasa automáticamente al siguiente de la cadena. Para el 503 se reintenta con _backoff_ antes de saltar; para el 429 se salta de inmediato. Esto mejora la resiliencia ante saturación o cuota, aunque no garantiza disponibilidad si fallan todos los modelos. El mecanismo se comparte entre análisis, chat y comparación.
 
 - **Protección de la demo pública.** Las subidas y todas las operaciones con Gemini comparten límites por IP, además de cuotas globales de ráfaga y diarias y un máximo de tres operaciones de IA concurrentes. Las respuestas `429` publican cabeceras `RateLimit` y `Retry-After`; `/health` queda excluido y cachea brevemente su comprobación de Neon. Los PDFs se limitan a 5 MB y 100 páginas, las preguntas a 2.000 caracteres y los análisis ya guardados se reutilizan sin gastar la cuota global.
 
 - **Comparación de versiones.** Dos contratos → una llamada con structured output que devuelve los cambios (añadido/eliminado/modificado con impacto y valores antes/después) y cómo cambia el perfil de riesgo.
 
-- **Disclaimer legal siempre visible** en la interfaz y en las respuestas del análisis.
+---
+
+## Calidad y CI
+
+La suite levanta la misma aplicación Express sobre un puerto efímero, pero
+inyecta una base de datos y servicios de IA simulados. Comprueba CORS,
+health/readiness, límites JSON y multipart, privacidad del listado, análisis
+cacheado, descarga Unicode, limpieza tras una ingesta fallida, SSE y rate
+limiting sin necesitar secretos ni consumir cuota externa.
+
+GitHub Actions ejecuta en paralelo los tests del backend y el build de
+producción del frontend con Node 22 en cada push y pull request a `master`.
+El resultado actual se publica en el badge situado al inicio del README.
 
 ---
 
@@ -212,17 +240,6 @@ npm run dev
 - `npm run db:reset` — vacía todos los datos de la base configurada
 - `npm run seed` — regenera las muestras completas usando Gemini
 
-### Calidad y CI
-
-La suite de integración levanta la misma aplicación Express sobre un puerto
-efímero, pero inyecta una base de datos y servicios de IA simulados. Comprueba
-CORS, health/readiness, límites JSON y multipart, privacidad del listado,
-análisis cacheado, descarga Unicode, limpieza tras una ingesta fallida, SSE y
-rate limiting sin necesitar secretos ni consumir cuota externa.
-
-GitHub Actions ejecuta en paralelo los tests del backend y el build de
-producción del frontend con Node 22 en cada push y pull request a `master`.
-
 Para detener la base de datos:
 
 ```bash
@@ -263,8 +280,9 @@ npm.cmd run db:check
 ```
 
 La migración activa `vector` y crea el esquema completo. Para la API desplegada,
-utiliza la URL **pooled** de Neon y conserva sus parámetros de seguridad, como
-`sslmode=require`.
+utiliza la URL **pooled** de Neon y conserva sus parámetros de seguridad. Si
+Neon entrega `sslmode=require`, la configuración lo normaliza a
+`sslmode=verify-full` antes de crear el pool.
 
 ### 2. Backend en Render
 
@@ -277,7 +295,7 @@ versionada y no depende de introducir manualmente los comandos del servicio.
 3. Cuando Render lo solicite, configura los dos secretos:
 
 ```text
-DATABASE_URL=<URL pooled de Neon con sslmode=require>
+DATABASE_URL=<URL pooled de Neon>
 GEMINI_API_KEY=<clave de Google AI Studio>
 ```
 
@@ -331,7 +349,10 @@ redesplegar el frontend y verificar `/health`, la lista de ejemplos y CORS.
   memoria porque la demo utiliza una única instancia y se reinician cuando
   Render suspende, reinicia o redespliega el servicio. Para proteger presupuesto
   real o escalar habría que moverlos a un almacén compartido y persistente.
-- El modelo `gemini-3.5-flash` tiene un límite de cuota diario en el _free tier_; al agotarse, la cadena de fallback pasa automáticamente a otros modelos (cada uno con su propia cuota). El análisis se guarda en base de datos, así que volver a verlo no consume cuota; solo el chat y la comparación hacen llamadas por uso.
+- Las cuotas de Gemini dependen del modelo, el proyecto y el _tier_. Cuando un
+  intento devuelve 429, la cadena de fallback prueba el siguiente modelo. Los
+  análisis guardados se reutilizan; subir un PDF nuevo, conversar o comparar
+  versiones sí consume recursos de IA.
 - El chunking por expresiones regulares está optimizado para contratos en español bien estructurados (Cláusula/Artículo/Estipulación).
 - Los PDFs escaneados sin OCR no tienen texto extraíble y se rechazan con un aviso.
 
