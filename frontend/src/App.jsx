@@ -25,7 +25,7 @@ export default function App() {
         <div className="mb-10 text-center">
           <h1 className="text-3xl font-bold tracking-tight">Sube un contrato para analizarlo</h1>
           <p className="mt-3 text-slate-600">
-            Resumen ejecutivo, datos clave, detección de riesgos y chat con citas — en minutos.
+            Resumen ejecutivo, datos clave, detección de riesgos y chat con citas.
           </p>
           <button
             onClick={() => setComparing(true)}

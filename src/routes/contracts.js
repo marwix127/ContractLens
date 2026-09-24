@@ -111,7 +111,7 @@ async function parseUploadedPdf(req, res, next) {
   next()
 }
 
-// POST /contracts — subir un PDF y extraer su texto
+// POST /contracts - subir un PDF y extraer su texto
 router.post(
   '/',
   ...uploadAdmissionLimiters,
@@ -155,7 +155,7 @@ router.post(
   }
 )
 
-// GET /contracts — solo las muestras salvo opt-in local explícito. Así, una
+// GET /contracts - solo las muestras salvo opt-in local explícito. Así, una
 // variable NODE_ENV ausente nunca expone por accidente documentos de usuarios.
 router.get('/', async (req, res) => {
   const where = config.exposeAllContracts ? '' : 'WHERE is_sample = true'
@@ -165,7 +165,7 @@ router.get('/', async (req, res) => {
   res.json({ contracts: rows })
 })
 
-// GET /contracts/samples — contratos de muestra precargados para el demo.
+// GET /contracts/samples - contratos de muestra precargados para el demo.
 // Debe ir ANTES de /:id, o "samples" se interpretaría como un id.
 router.get('/samples', async (req, res) => {
   const { rows } = await pool.query(
@@ -174,7 +174,7 @@ router.get('/samples', async (req, res) => {
   res.json({ contracts: rows })
 })
 
-// GET /contracts/:id/file — sirve el PDF original.
+// GET /contracts/:id/file - sirve el PDF original.
 router.get('/:id/file', async (req, res) => {
   const { rows } = await pool.query('SELECT pdf_data, filename FROM contracts WHERE id = $1', [req.params.id])
   if (rows.length === 0 || !rows[0].pdf_data) {
@@ -186,7 +186,7 @@ router.get('/:id/file', async (req, res) => {
   res.send(rows[0].pdf_data)
 })
 
-// GET /contracts/:id — detalle de un contrato
+// GET /contracts/:id - detalle de un contrato
 router.get('/:id', async (req, res) => {
   const { rows } = await pool.query(
     'SELECT id, filename, total_pages, uploaded_at FROM contracts WHERE id = $1',
@@ -228,7 +228,7 @@ async function prepareAnalysis(req, res, next) {
   next()
 }
 
-// POST /contracts/:id/analyze — análisis inicial con Gemini Flash (5-15 s)
+// POST /contracts/:id/analyze - análisis inicial con Gemini Flash (5-15 s)
 router.post('/:id/analyze', ...aiAdmissionLimiters, prepareAnalysis, aiConcurrencyLimiter, ...aiCostLimiters, async (req, res) => {
   try {
     const analysis = await analyzeContract(res.locals.contractText)
@@ -250,7 +250,7 @@ router.post('/:id/analyze', ...aiAdmissionLimiters, prepareAnalysis, aiConcurren
   }
 })
 
-// GET /contracts/:id/analysis — obtener el análisis guardado
+// GET /contracts/:id/analysis - obtener el análisis guardado
 router.get('/:id/analysis', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT summary, extracted_data, risks, created_at
@@ -264,7 +264,7 @@ router.get('/:id/analysis', async (req, res) => {
   res.json({ ...rows[0], disclaimer: DISCLAIMER })
 })
 
-// GET /contracts/:id/analysis/pdf — descarga el análisis como informe PDF
+// GET /contracts/:id/analysis/pdf - descarga el análisis como informe PDF
 router.get('/:id/analysis/pdf', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT a.summary, a.extracted_data, a.risks, c.filename
@@ -323,7 +323,7 @@ async function prepareChatRequest(req, res, next) {
   next()
 }
 
-// POST /contracts/:id/chat — pregunta sobre el contrato (RAG con Gemini)
+// POST /contracts/:id/chat - pregunta sobre el contrato (RAG con Gemini)
 router.post('/:id/chat', ...aiAdmissionLimiters, prepareChatRequest, aiConcurrencyLimiter, ...aiCostLimiters, async (req, res) => {
   try {
     const result = await chat(req.params.id, res.locals.chatQuestion, res.locals.conversationId)
@@ -339,7 +339,7 @@ router.post('/:id/chat', ...aiAdmissionLimiters, prepareChatRequest, aiConcurren
   }
 })
 
-// POST /contracts/:id/chat/stream — igual que /chat pero con respuesta SSE
+// POST /contracts/:id/chat/stream - igual que /chat pero con respuesta SSE
 router.post('/:id/chat/stream', ...aiAdmissionLimiters, prepareChatRequest, aiConcurrencyLimiter, ...aiCostLimiters, async (req, res) => {
   // Cabeceras Server-Sent Events.
   res.setHeader('Content-Type', 'text/event-stream')
@@ -394,7 +394,7 @@ async function prepareComparison(req, res, next) {
   next()
 }
 
-// POST /contracts/compare — compara dos versiones de un contrato.
+// POST /contracts/compare - compara dos versiones de un contrato.
 // Body: { fromId, toId } (versión anterior y nueva).
 router.post('/compare', ...aiAdmissionLimiters, prepareComparison, aiConcurrencyLimiter, ...aiCostLimiters, async (req, res) => {
   const before = res.locals.comparisonBefore

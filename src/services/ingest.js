@@ -1,4 +1,5 @@
-// Pipeline de ingesta: texto del contrato → chunks → embeddings → tabla chunks.
+// Pipeline de ingesta: parte el texto del contrato en chunks, genera sus
+// embeddings y los guarda en la tabla chunks.
 const pool = require('../db')
 const { chunkPages } = require('./chunking')
 const { embedDocuments } = require('./embeddings')

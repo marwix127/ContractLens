@@ -163,7 +163,7 @@ async function seedLocal() {
         ]
       )
 
-      console.log(`✓ ${sample.filename}`)
+      console.log(sample.filename)
     }
 
     await client.query('COMMIT')

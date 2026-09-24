@@ -1,6 +1,6 @@
 // Siembra contratos de muestra para el demo: genera PDFs ficticios con pdfkit,
-// los pasa por el mismo pipeline real (extracción → chunking → embeddings →
-// análisis) y los marca como is_sample. Reejecutable: borra las muestras previas.
+// los pasa por el pipeline real (extracción, chunking, embeddings y análisis) y
+// los marca como is_sample. Se puede reejecutar: borra antes las muestras previas.
 require('../src/config/env')
 const PDFDocument = require('pdfkit')
 const { PDFParse } = require('pdf-parse')
@@ -126,7 +126,7 @@ async function seed() {
       try {
         chunks = (await ingestContract(id, result.pages)).chunksCreated
       } catch (e) {
-        console.warn(`  ⚠ embeddings falló en ${sample.filename}: ${e.message}`)
+        console.warn(`  embeddings falló en ${sample.filename}: ${e.message}`)
       }
 
       let risks = '—'
@@ -139,10 +139,10 @@ async function seed() {
         )
         risks = analysis.risks.length
       } catch (e) {
-        console.warn(`  ⚠ análisis falló en ${sample.filename} (se generará al abrirlo): ${e.message}`)
+        console.warn(`  análisis falló en ${sample.filename} (se generará al abrirlo): ${e.message}`)
       }
 
-      console.log(`✓ ${sample.filename} — ${result.total} págs, ${chunks} chunks, ${risks} riesgos`)
+      console.log(`${sample.filename}: ${result.total} págs, ${chunks} chunks, ${risks} riesgos`)
     }
 
     console.log('\nSeed completado.')

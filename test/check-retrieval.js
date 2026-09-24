@@ -16,7 +16,8 @@ async function main() {
   console.log('chunks guardados:', stored.length)
   stored.forEach(r => console.log(`  [pag ${r.page_number}] emb=${r.tiene_emb} dims=${r.dims} ref="${(r.clause_reference || 'preambulo').slice(0, 50)}"`))
 
-  // Búsqueda semántica: pregunta → embedding → top 3 chunks por coseno.
+  // Búsqueda semántica: la pregunta se convierte en embedding y se piden los
+// 3 chunks más cercanos por coseno.
   const pregunta = '¿Dónde se resuelven los conflictos legales?'
   const qVec = await embedQuery(pregunta)
   const { rows: hits } = await pool.query(

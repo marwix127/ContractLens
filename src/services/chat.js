@@ -1,7 +1,7 @@
-// Chat RAG sobre un contrato con Gemini.
-// Flujo: pregunta → embedding → retrieval top-K en pgvector → respuesta con
-// citas (página + cláusula) y manejo explícito de "no lo sé".
-// Expone dos variantes: chat() (respuesta completa) y chatStream() (SSE).
+// Chat RAG sobre un contrato con Gemini. La pregunta se convierte en embedding,
+// se recuperan los top-K chunks de pgvector y la respuesta cita página y
+// cláusula, o admite que el dato no está en el documento.
+// chat() devuelve la respuesta completa; chatStream() la emite por SSE.
 const pool = require('../db')
 const { embedQuery } = require('./embeddings')
 const { getGeminiClient } = require('./gemini')
@@ -135,10 +135,10 @@ async function chat(contractId, question, conversationId) {
   return { conversationId: cid, answer, citations }
 }
 
-// Respuesta en streaming. Generador que emite eventos:
-//   { type: 'meta', conversationId, citations }  — una vez, al principio
-//   { type: 'delta', text }                      — por cada fragmento de texto
-//   { type: 'done' }                             — al terminar (tras persistir)
+// Respuesta en streaming. Generador que emite, en este orden:
+//   'meta' una vez al principio, con conversationId y citas
+//   'delta' por cada fragmento de texto
+//   'done' al terminar, ya persistido
 async function* chatStream(contractId, question, conversationId) {
   const { conversationId: cid, contents, citations } = await prepareChat(contractId, question, conversationId)
   const ai = getGeminiClient()

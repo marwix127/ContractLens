@@ -1,7 +1,7 @@
 // Comparación de dos versiones de un contrato con Gemini y structured output.
-// Una sola llamada con ambos textos en contexto → JSON con el resumen de
-// cambios, la lista detallada (añadido/eliminado/modificado) y el cambio en el
-// perfil de riesgo.
+// Una sola llamada con ambos textos en contexto devuelve el resumen de cambios,
+// la lista detallada (añadido/eliminado/modificado) y el cambio en el perfil de
+// riesgo.
 const { Type } = require('@google/genai')
 const { getGeminiClient } = require('./gemini')
 const { withGeminiFallback } = require('./retry')

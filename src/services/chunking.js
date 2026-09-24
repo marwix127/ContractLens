@@ -1,8 +1,7 @@
-// Chunking semántico de contratos por cláusulas.
-//
-// Estrategia: detectar encabezados de cláusula/artículo con regex y partir el
-// texto en esos límites. Cada chunk conserva la página donde empieza y la
-// referencia de la cláusula, lo que permite citas precisas en el chat RAG.
+// Chunking de contratos por cláusulas: se detectan los encabezados de
+// cláusula/artículo con regex y se parte el texto en esos límites. Cada chunk
+// guarda la página en la que empieza y la referencia de su cláusula, para poder
+// citar con precisión en el chat.
 
 // Encabezados típicos en contratos (ES): "CLÁUSULA PRIMERA", "Cláusula 1.",
 // "Artículo 5", "ESTIPULACIÓN 3ª", etc. Se buscan a principio de línea.

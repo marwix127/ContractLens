@@ -1,6 +1,6 @@
-// Análisis inicial del contrato con Gemini Flash y structured output.
-// Una sola llamada con todo el contrato en contexto → JSON garantizado por
-// schema (resumen, datos clave y riesgos). Ver secciones 4 y 5 del doc.
+// Análisis inicial del contrato con Gemini Flash y structured output: una sola
+// llamada con todo el contrato en contexto y un JSON garantizado por schema
+// (resumen, datos clave y riesgos).
 const { Type } = require('@google/genai')
 const { getGeminiClient } = require('./gemini')
 const { withGeminiFallback } = require('./retry')
